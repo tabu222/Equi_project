@@ -1,128 +1,129 @@
-# Hợp đồng API – Equi backend (Flow 1–4)
+# API contract – Equi backend (Flow 1–4)
 
-Tài liệu cho nhóm frontend. Backend: Django REST, database `sql/horse_v2.sql`.
+Documentation for the frontend team. Backend: Django REST, database `sql/horse_v2.sql`.
 
-| Phần | Nội dung |
+| Part | Contents |
 |---|---|
-| [1–3](#1-quy-ước-chung) | Quy ước chung, mã lỗi, trạng thái hồ sơ ngựa, vai trò và quyền |
-| [4](#4-flow-1--tiếp-nhận-ngựa) | **Flow 1** – đăng nhập, ngựa, giấy tờ, khám đầu vào, sửa lý lịch, chuồng |
-| [5](#5-flow-2--huấn-luyện) | **Flow 2** – đánh giá, phân công Trainer, giáo án, buổi tập, kết quả, đánh giá buổi tập |
-| [6](#6-flow-3--y-tế) | **Flow 3** – báo cáo sức khỏe, phiếu khám, Training Lock, thuốc, tiêm phòng, lịch y tế |
-| [7](#7-flow-4--chăm-sóc-và-dinh-dưỡng) | **Flow 4** – khẩu phần, việc chăm sóc, kho vật tư |
-| [8](#8-thông-báo) | Thông báo (chuông) cho từng vai trò |
-| [9](#9-frontend-cần-sửa-gì-flow-1) | Frontend cần sửa gì ở Flow 1 đang có |
-| [10](#10-frontend-flow-24) | Code mẫu frontend cho Flow 2–4 |
+| [1–3](#1-general-conventions) | General conventions, error codes, horse registration status, roles and permissions |
+| [4](#4-flow-1--horse-intake) | **Flow 1** – login, horses, documents, intake examination, profile changes, stalls |
+| [5](#5-flow-2--training) | **Flow 2** – assessment, trainer assignment, training plans, training sessions, results, session reviews |
+| [6](#6-flow-3--medical) | **Flow 3** – health reports, medical records, Training Lock, treatments, vaccinations, medical schedule |
+| [7](#7-flow-4--care-and-nutrition) | **Flow 4** – diet plans, care tasks, inventory |
+| [8](#8-notifications) | Notifications (bell) for each role |
+| [9](#9-frontend-changes-flow-1) | What the frontend needs to change in the existing Flow 1 |
+| [10](#10-frontend-for-flow-24) | Suggested frontend screens for Flow 2–4 |
 
-## 1. Quy ước chung
+## 1. General conventions
 
-| Mục | Quy ước |
+| Item | Convention |
 |---|---|
-| Địa chỉ gốc | `http://localhost:8000/api` (frontend gọi `/api/...` qua Vite proxy) |
-| Dấu `/` cuối | **Không có**: `/api/horses/5`, không phải `/api/horses/5/` |
-| Định dạng | JSON cả chiều gửi lẫn chiều nhận |
-| Tên khóa JSON | **Đúng tên cột database**: `HorseID`, `HorseName`, `RegistrationStatus`... |
-| Giá trị trạng thái | **Đúng giá trị trong database**: `Draft`, `PendingExam`, `Approved`... |
-| Ngày | `"2021-03-10"` |
-| Ngày giờ | `"2026-10-10T08:30:00"` (giờ Việt Nam, không có múi giờ) |
-| Số thập phân | Số thường: `"WeightKg": 480.5` |
-| Giờ | `"06:00:00"` (gửi `"06:00"` cũng được) |
-| Lọc danh sách | Query string theo tên cột: `?HorseID=5&Status=Pending`; cờ bật / tắt dùng `=1` (`?mine=1`, `?open=1`) |
-| Đăng nhập | Header `Authorization: Bearer <access>` cho mọi API (trừ `auth/login`, `health`) |
+| Base URL | `http://localhost:8000/api` (the frontend calls `/api/...` through the Vite proxy) |
+| Trailing `/` | **None**: `/api/horses/5`, not `/api/horses/5/` |
+| Format | JSON for both requests and responses |
+| JSON key names | **Exactly the database column names**: `HorseID`, `HorseName`, `RegistrationStatus`... |
+| Status values | **Exactly the values in the database**: `Draft`, `PendingExam`, `Approved`... |
+| Date | `"2021-03-10"` |
+| Date-time | `"2026-10-10T08:30:00"` (Vietnam time, no time zone) |
+| Decimal numbers | Plain numbers: `"WeightKg": 480.5` |
+| Time | `"06:00:00"` (sending `"06:00"` also works) |
+| List filtering | Query string by column name: `?HorseID=5&Status=Pending`; on / off flags use `=1` (`?mine=1`, `?open=1`) |
+| Login | Header `Authorization: Bearer <access>` for every API (except `auth/login`, `health`) |
+| Error messages | Error `detail` messages returned by the backend are in Vietnamese (examples in this document are translated) |
 
-### Mã lỗi
+### Error codes
 
-| HTTP | Khi nào | Dạng body |
+| HTTP | When | Body shape |
 |---|---|---|
-| 400 | Dữ liệu sai / thiếu (cả tham số lọc sai, vd `?HorseID=abc`) | `{"HorseName": ["Trường này là bắt buộc."], "Gender": ["\"Unknown\" is not a valid choice."]}` |
-| 401 | Chưa đăng nhập, token hết hạn, sai mật khẩu | `{"detail": "...", "code": "..."}` |
-| 403 | Vai trò không có quyền | `{"detail": "Bạn không có quyền thực hiện thao tác này.", "code": "PERMISSION_DENIED"}` |
-| 404 | Không tồn tại **hoặc không được thấy** (ngựa của CLB khác, ngựa của chủ khác) | `{"detail": "...", "code": "NOT_FOUND"}` |
-| 409 | Sai luật nghiệp vụ | `{"detail": "Ngựa chưa có phiếu khám đầu vào đã chốt.", "code": "INITIAL_EXAM_REQUIRED"}` |
+| 400 | Invalid / missing data (including invalid filter parameters, e.g. `?HorseID=abc`) | `{"HorseName": ["This field is required."], "Gender": ["\"Unknown\" is not a valid choice."]}` |
+| 401 | Not logged in, token expired, wrong password | `{"detail": "...", "code": "..."}` |
+| 403 | Role lacks permission | `{"detail": "You do not have permission to perform this action.", "code": "PERMISSION_DENIED"}` |
+| 404 | Does not exist **or is not visible** (horse of another club, horse of another owner) | `{"detail": "...", "code": "NOT_FOUND"}` |
+| 409 | Business rule violation | `{"detail": "The horse does not have a signed intake examination record.", "code": "INITIAL_EXAM_REQUIRED"}` |
 
-Frontend hiển thị `detail` cho người dùng; dùng `code` khi cần xử lý riêng.
+The frontend shows `detail` to the user; use `code` when special handling is needed.
 
-Các `code` của lỗi 409 (chung và Flow 1; mã riêng của Flow 2–4 ghi ở từng phần):
+409 error `code`s (common and Flow 1; codes specific to Flow 2–4 are listed in each part):
 
-| code | Ý nghĩa |
+| code | Meaning |
 |---|---|
-| `INVALID_STATUS` | Thao tác không hợp lệ với trạng thái hiện tại (vd: sửa hồ sơ đã gửi) |
-| `MISSING_FIELDS` | Gửi hồ sơ / chốt phiếu khám khi chưa nhập đủ (`detail` liệt kê tên cột còn thiếu) |
-| `INITIAL_EXAM_REQUIRED` | Duyệt hồ sơ khi Vet chưa chốt phiếu khám đầu vào |
-| `INITIAL_EXAM_FAILED` | Phiếu khám đầu vào không đạt → chỉ có thể từ chối |
-| `DUPLICATE_HORSE_CODE` | Mã ngựa đã có trong CLB |
-| `STALL_NOT_FOUND`, `STALL_NOT_AVAILABLE` | Chuồng không thuộc CLB / không còn trống |
-| `INITIAL_EXAM_EXISTS` | Lần nộp này đã có phiếu khám đầu vào (có thể đang là nháp của Vet khác) |
-| `RECORD_SIGNED` | Phiếu khám đã chốt, không sửa / xóa được |
-| `NOT_RECORD_OWNER` | Chỉ Vet lập phiếu mới sửa / chốt được phiếu nháp |
-| `EXAM_TYPE_LOCKED` | Không đổi loại khám của phiếu đã tạo |
-| `RECORD_NOT_SIGNED` | Phiếu nháp thì sửa trực tiếp, không thêm đính chính |
-| `PENDING_REQUEST_EXISTS` | Ngựa đã có 1 yêu cầu sửa lý lịch đang chờ |
-| `FIELD_NOT_EDITABLE` | Xin sửa trường không được phép |
-| `REVIEW_NOTE_REQUIRED` | Từ chối / trả về mà thiếu lý do (yêu cầu sửa lý lịch, giáo án) |
-| `HORSE_NOT_APPROVED` | Thao tác Flow 2–4 trên ngựa chưa tiếp nhận (chưa `Approved`) |
-| `DUPLICATE_STALL`, `STALL_OCCUPIED` | Số chuồng trùng / chuồng đang có ngựa |
-| `TRAINING_LOCK_FULL`, `TRAINING_LOCK_RESTRICTED` | Ngựa đang bị khóa tập (xem Flow 3). Trigger SQL Server trả cùng mã này |
-| `UX_...`, `UQ_...`, `DB_INTEGRITY` | Vi phạm unique index / ràng buộc database (đã dịch sang tiếng Việt) |
+| `INVALID_STATUS` | Action not valid for the current status (e.g. editing a submitted profile) |
+| `MISSING_FIELDS` | Submitting a profile / signing a medical record before all fields are filled in (`detail` lists the missing column names) |
+| `INITIAL_EXAM_REQUIRED` | Approving a profile before the Vet has signed the intake examination record |
+| `INITIAL_EXAM_FAILED` | Intake examination did not pass → can only reject |
+| `DUPLICATE_HORSE_CODE` | Horse code already exists in the club |
+| `STALL_NOT_FOUND`, `STALL_NOT_AVAILABLE` | Stall does not belong to the club / is no longer available |
+| `INITIAL_EXAM_EXISTS` | This submission already has an intake examination record (it may be another Vet's draft) |
+| `RECORD_SIGNED` | Medical record is signed and cannot be edited / deleted |
+| `NOT_RECORD_OWNER` | Only the Vet who created the record can edit / sign a draft record |
+| `EXAM_TYPE_LOCKED` | Cannot change the exam type of an existing record |
+| `RECORD_NOT_SIGNED` | Draft records are edited directly, not through an amendment |
+| `PENDING_REQUEST_EXISTS` | The horse already has 1 pending profile change request |
+| `FIELD_NOT_EDITABLE` | Requested change to a field that is not allowed |
+| `REVIEW_NOTE_REQUIRED` | Rejecting / returning without a reason (profile change request, training plan) |
+| `HORSE_NOT_APPROVED` | Flow 2–4 action on a horse that has not been taken in (not yet `Approved`) |
+| `DUPLICATE_STALL`, `STALL_OCCUPIED` | Duplicate stall number / stall currently has a horse |
+| `TRAINING_LOCK_FULL`, `TRAINING_LOCK_RESTRICTED` | Horse is under a training lock (see Flow 3). The SQL Server trigger returns the same code |
+| `UX_...`, `UQ_...`, `DB_INTEGRITY` | Unique index / database constraint violation (translated into Vietnamese) |
 
-## 2. Trạng thái hồ sơ ngựa (`RegistrationStatus`)
+## 2. Horse registration status (`RegistrationStatus`)
 
 ```
-Draft ──submit──> Submitted ──verify──> PendingExam ──(Vet chốt khám)──> approve ──> Approved ──archive──> Archived
+Draft ──submit──> Submitted ──verify──> PendingExam ──(Vet signs exam)──> approve ──> Approved ──archive──> Archived
   ^                   │                      │
-  └──── sửa ──── Rejected <──── reject ──────┘
+  └──── edit ──── Rejected <──── reject ──────┘
 ```
 
-| Giá trị | Nghĩa | Ai làm gì tiếp |
+| Value | Meaning | Who does what next |
 |---|---|---|
-| `Draft` | Nháp | Owner / Manager sửa, gửi |
-| `Submitted` | Đã gửi | Manager xác minh hoặc từ chối |
-| `PendingExam` + `InitialExamSigned: false` | Chờ Vet khám đầu vào | Vet trực khám; Manager có thể từ chối |
-| `PendingExam` + `InitialExamSigned: true` | Vet đã chốt khám (màn cũ gọi là `PENDING_COMPLETION`) | Manager duyệt (nếu đạt) hoặc từ chối |
-| `Approved` | Đã tiếp nhận, có `HorseCode` | Owner xin sửa lý lịch; Manager lưu trữ |
-| `Rejected` | Bị từ chối (lý do ở `RegistrationRequest.ManagerNote`) | Owner / Manager sửa rồi gửi lại |
-| `Archived` | Đã rời CLB | Chỉ xem |
+| `Draft` | Draft | Owner / Manager edits, submits |
+| `Submitted` | Submitted | Manager verifies or rejects |
+| `PendingExam` + `InitialExamSigned: false` | Waiting for the Vet's intake examination | On-duty Vet examines; Manager can reject |
+| `PendingExam` + `InitialExamSigned: true` | Vet has signed the exam (the old screen calls this `PENDING_COMPLETION`) | Manager approves (if passed) or rejects |
+| `Approved` | Taken in, has a `HorseCode` | Owner requests profile changes; Manager archives |
+| `Rejected` | Rejected (reason in `RegistrationRequest.ManagerNote`) | Owner / Manager edits and resubmits |
+| `Archived` | Has left the club | View only |
 
-Khi gửi lại sau `Rejected`, backend tạo một `RegistrationRequest` mới và **Vet phải khám lại**
-(`InitialExamSigned` quay về `false`).
+When resubmitting after `Rejected`, the backend creates a new `RegistrationRequest` and **the Vet must examine again**
+(`InitialExamSigned` goes back to `false`).
 
 `CurrentHealthStatus`: `Unknown`, `Healthy`, `Monitor`, `Injured`, `Recovering`, `Isolated`.
-`Gender`: `Male`, `Female`, `Gelding`. `SexClass` (backend tự tính): `Foal` (< 1 tuổi), `Colt`/`Filly` (< 4 tuổi), `Stallion`/`Mare`, `Gelding`.
+`Gender`: `Male`, `Female`, `Gelding`. `SexClass` (computed by the backend): `Foal` (< 1 year old), `Colt`/`Filly` (< 4 years old), `Stallion`/`Mare`, `Gelding`.
 
-## 3. Vai trò và quyền
+## 3. Roles and permissions
 
-Đăng nhập trả về `Roles` và `Permissions`. Frontend dùng `Permissions` để ẩn / hiện nút.
+Login returns `Roles` and `Permissions`. The frontend uses `Permissions` to hide / show buttons.
 
-| Vai trò (`RoleCode`) | Quyền | Việc chính |
+| Role (`RoleCode`) | Permissions | Main tasks |
 |---|---|---|
-| `CLUB_MANAGER` | `CLUB_MANAGE`, `RBAC_MANAGE`, `AUDIT_VIEW`, `HORSE_VIEW`, `HORSE_REGISTER_REVIEW`, `HORSE_ARCHIVE`, `PROFILE_EDIT_APPROVE`, `INVENTORY_MANAGE` | Duyệt hồ sơ ngựa, chuồng, tài khoản, kho vật tư, giao việc chăm sóc |
-| `HEAD_TRAINER` | `HORSE_VIEW`, `HORSE_ASSESS`, `TRAINER_ASSIGN`, `TRAINING_PLAN_APPROVE`, `TRAINING_SESSION_ASSIGN`, `TRAINING_SESSION_SUPERVISE`, `HEALTH_REPORT`, `DIET_MANAGE`, `INVENTORY_REQUEST` | Đánh giá ngựa, phân công Trainer, duyệt giáo án, xếp buổi tập, lập khẩu phần, giao việc Groom |
-| `TRAINER` | `HORSE_VIEW`, `TRAINING_PLAN_MANAGE`, `TRAINING_SESSION_SUPERVISE`, `TRAINING_REVIEW`, `HEALTH_REPORT` | Soạn giáo án, giám sát (kể cả làm Substitute), đánh giá buổi tập |
-| `WORK_RIDER` | `HORSE_VIEW`, `TRAINING_RESULT_UPDATE`, `HEALTH_REPORT` | Bắt đầu buổi tập, ghi kết quả |
-| `VETERINARIAN` | `HORSE_VIEW`, `MEDICAL_MANAGE`, `MEDICAL_SIGN`, `TRAINING_LOCK_MANAGE`, `DIET_MANAGE` | Khám, chốt phiếu, Training Lock, thuốc, tiêm phòng, duyệt khẩu phần |
-| `GROOM` | `HORSE_VIEW`, `CARE_MANAGE`, `HEALTH_REPORT`, `INVENTORY_REQUEST` | Việc chăm sóc, báo sự cố, xin vật tư |
-| `HORSE_OWNER` | `HORSE_REGISTER`, `PROFILE_EDIT_REQUEST`, `OWNER_VIEW` | Đăng ký ngựa, xin sửa lý lịch, xem ngựa của mình |
+| `CLUB_MANAGER` | `CLUB_MANAGE`, `RBAC_MANAGE`, `AUDIT_VIEW`, `HORSE_VIEW`, `HORSE_REGISTER_REVIEW`, `HORSE_ARCHIVE`, `PROFILE_EDIT_APPROVE`, `INVENTORY_MANAGE` | Approve horse profiles, stalls, accounts, inventory, assign care tasks |
+| `HEAD_TRAINER` | `HORSE_VIEW`, `HORSE_ASSESS`, `TRAINER_ASSIGN`, `TRAINING_PLAN_APPROVE`, `TRAINING_SESSION_ASSIGN`, `TRAINING_SESSION_SUPERVISE`, `HEALTH_REPORT`, `DIET_MANAGE`, `INVENTORY_REQUEST` | Assess horses, assign trainers, approve training plans, schedule training sessions, create diet plans, assign tasks to Grooms |
+| `TRAINER` | `HORSE_VIEW`, `TRAINING_PLAN_MANAGE`, `TRAINING_SESSION_SUPERVISE`, `TRAINING_REVIEW`, `HEALTH_REPORT` | Write training plans, supervise (including as Substitute), review training sessions |
+| `WORK_RIDER` | `HORSE_VIEW`, `TRAINING_RESULT_UPDATE`, `HEALTH_REPORT` | Start training sessions, record results |
+| `VETERINARIAN` | `HORSE_VIEW`, `MEDICAL_MANAGE`, `MEDICAL_SIGN`, `TRAINING_LOCK_MANAGE`, `DIET_MANAGE` | Examinations, signing records, Training Lock, treatments, vaccinations, approving diet plans |
+| `GROOM` | `HORSE_VIEW`, `CARE_MANAGE`, `HEALTH_REPORT`, `INVENTORY_REQUEST` | Care tasks, reporting incidents, requesting inventory items |
+| `HORSE_OWNER` | `HORSE_REGISTER`, `PROFILE_EDIT_REQUEST`, `OWNER_VIEW` | Register horses, request profile changes, view own horses |
 
-Phạm vi dữ liệu: nhân sự chỉ thấy dữ liệu **trong CLB của mình**; chủ ngựa chỉ thấy **ngựa của mình**
-(chỉ phần tóm tắt sức khỏe, không xem huấn luyện / bệnh án chi tiết).
+Data scope: staff only see data **within their own club**; horse owners only see **their own horses**
+(only the health summary, not detailed training / medical records).
 
-## 4. Flow 1 – tiếp nhận ngựa
+## 4. Flow 1 – Horse intake
 
-### 4.1 Đăng nhập, người dùng
+### 4.1 Login, users
 
-| Method | URL | Ai dùng | Body / tham số |
+| Method | URL | Used by | Body / parameters |
 |---|---|---|---|
-| GET | `/health` | không cần đăng nhập | → `{"backend": "UP", "database": "UP"}` (503 nếu DB lỗi) |
-| POST | `/auth/login` | mọi người | `{"Email", "Password"}` → `{access, refresh, User}` |
-| POST | `/auth/refresh` | mọi người | `{"refresh"}` → `{access}` |
-| GET | `/auth/me` | đã đăng nhập | → `User` kèm `Roles`, `Permissions` |
-| GET | `/users?RoleCode=HORSE_OWNER` | Manager, Head Trainer | người dùng trong CLB (`RoleCode` = `TRAINER`, `WORK_RIDER`, `GROOM`... để chọn người phân công) |
-| POST | `/users` | Manager | `{"FullName", "Email", "Phone"?, "Address"?, "RoleCode"? (mặc định HORSE_OWNER), "Password"?}` |
-| GET | `/users/{UserID}` | chính mình / Manager cùng CLB | |
-| GET | `/clubs` | đã đăng nhập | CLB đang hoạt động (Owner chọn khi đăng ký) |
+| GET | `/health` | no login required | → `{"backend": "UP", "database": "UP"}` (503 if the DB fails) |
+| POST | `/auth/login` | everyone | `{"Email", "Password"}` → `{access, refresh, User}` |
+| POST | `/auth/refresh` | everyone | `{"refresh"}` → `{access}` |
+| GET | `/auth/me` | logged in | → `User` with `Roles`, `Permissions` |
+| GET | `/users?RoleCode=HORSE_OWNER` | Manager, Head Trainer | users in the club (`RoleCode` = `TRAINER`, `WORK_RIDER`, `GROOM`... to pick people for assignments) |
+| POST | `/users` | Manager | `{"FullName", "Email", "Phone"?, "Address"?, "RoleCode"? (default HORSE_OWNER), "Password"?}` |
+| GET | `/users/{UserID}` | self / Manager of the same club | |
+| GET | `/clubs` | logged in | Active clubs (Owner picks one when registering) |
 
-`POST /users` không gửi `Password` thì backend tạo mật khẩu tạm và trả về `TemporaryPassword` **một lần duy nhất**.
+If `POST /users` is sent without `Password`, the backend generates a temporary password and returns `TemporaryPassword` **only once**.
 
-Ví dụ `POST /auth/login`:
+Example `POST /auth/login`:
 
 ```json
 {
@@ -137,26 +138,26 @@ Ví dụ `POST /auth/login`:
 }
 ```
 
-`access` hết hạn sau 60 phút, `refresh` sau 7 ngày (đổi trong `.env`).
+`access` expires after 60 minutes, `refresh` after 7 days (change in `.env`).
 
-### 4.2 Ngựa
+### 4.2 Horses
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/horses?RegistrationStatus=&OwnerID=&search=` | mọi vai trò | `search` tìm theo tên, mã, microchip |
-| GET | `/horses/{HorseID}` | mọi vai trò | kèm `HealthSummary` |
-| POST | `/horses` | Owner, Manager | tạo `Draft` |
-| PATCH | `/horses/{HorseID}` | Owner (ngựa mình), Manager | chỉ khi `Draft` / `Rejected`; gửi trường cần đổi |
-| POST | `/horses/{HorseID}/submit` | Owner, Manager | `Draft`/`Rejected` → `Submitted`; cần `HorseName`, `DateOfBirth`, `Gender`, `MicrochipNumber` |
+| GET | `/horses?RegistrationStatus=&OwnerID=&search=` | all roles | `search` matches name, code, microchip |
+| GET | `/horses/{HorseID}` | all roles | includes `HealthSummary` |
+| POST | `/horses` | Owner, Manager | creates a `Draft` |
+| PATCH | `/horses/{HorseID}` | Owner (own horse), Manager | only when `Draft` / `Rejected`; send the fields to change |
+| POST | `/horses/{HorseID}/submit` | Owner, Manager | `Draft`/`Rejected` → `Submitted`; requires `HorseName`, `DateOfBirth`, `Gender`, `MicrochipNumber` |
 | POST | `/horses/{HorseID}/verify` | Manager | `Submitted` → `PendingExam` |
 | POST | `/horses/{HorseID}/reject` | Manager | `{"Reason"}`; `Submitted`/`PendingExam` → `Rejected` |
 | POST | `/horses/{HorseID}/approve` | Manager | `{"HorseCode", "StallID"?, "ManagerNote"?}`; `PendingExam` → `Approved` |
 | POST | `/horses/{HorseID}/archive` | Manager | `{"Reason"}`; `Approved` → `Archived` |
-| GET | `/horses/{HorseID}/registration-requests` | xem được ngựa | lịch sử các lần nộp, lý do từ chối |
-| GET | `/horses/{HorseID}/audit-logs` | Manager | lịch sử thao tác |
-| GET | `/stalls?Status=Available` | Manager, nhân sự | chọn chuồng khi duyệt (xem thêm mục 4.6) |
+| GET | `/horses/{HorseID}/registration-requests` | can view the horse | history of submissions, rejection reasons |
+| GET | `/horses/{HorseID}/audit-logs` | Manager | action history |
+| GET | `/stalls?Status=Available` | Manager, staff | pick a stall when approving (see also section 4.6) |
 
-Body `POST /horses`:
+Body of `POST /horses`:
 
 ```json
 {
@@ -167,10 +168,10 @@ Body `POST /horses`:
 }
 ```
 
-- **Owner tự đăng ký**: gửi `ClubID`; `OwnerID` = chính mình.
-- **Manager nhập hộ**: gửi `OwnerID` (tài khoản `HORSE_OWNER`); `ClubID` = CLB của Manager.
+- **Owner registers themselves**: send `ClubID`; `OwnerID` = themselves.
+- **Manager enters on the owner's behalf**: send `OwnerID` (a `HORSE_OWNER` account); `ClubID` = the Manager's club.
 
-Ngựa trả về (`GET /horses/1`):
+Returned horse (`GET /horses/1`):
 
 ```json
 {
@@ -184,74 +185,74 @@ Ngựa trả về (`GET /horses/1`):
   "CreatedAt": "2026-10-10T08:00:00", "UpdatedAt": "2026-10-10T10:00:00",
   "SexClass": "Stallion",
   "InitialExamSigned": true,
-  "Owner": {"UserID": 5, "FullName": "Nguyễn Văn A", "Email": "a@example.com", "Phone": null, "Address": null},
+  "Owner": {"UserID": 5, "FullName": "Nguyen Van A", "Email": "a@example.com", "Phone": null, "Address": null},
   "CurrentStall": {"StallID": 1, "StallNumber": "A01", "StartDate": "2026-10-10"},
   "HealthSummary": {
     "MedicalRecordID": 1, "ExamDate": "2026-10-10T09:30:00", "ExamType": "Initial Exam",
     "HealthStatus": "Healthy", "TrainingEligibility": "Eligible",
-    "Conclusion": "Đủ điều kiện tiếp nhận", "RestrictionNote": null, "FollowUpDate": null
+    "Conclusion": "Eligible for intake", "RestrictionNote": null, "FollowUpDate": null
   }
 }
 ```
 
-`GET /horses` trả mảng các ngựa cùng dạng nhưng **không có** `HealthSummary`.
-Mọi API thao tác (`submit`, `verify`, `approve`...) đều trả về ngựa sau khi cập nhật, frontend dùng luôn để vẽ lại màn hình.
+`GET /horses` returns an array of horses in the same shape but **without** `HealthSummary`.
+Every action API (`submit`, `verify`, `approve`...) returns the horse after the update; the frontend can use it directly to redraw the screen.
 
-Điều kiện duyệt (`approve`): Vet đã chốt phiếu khám đầu vào của lần nộp hiện tại,
-`HealthStatus` là `Healthy` hoặc `Monitor` và `TrainingEligibility` khác `Not Eligible`.
+Approval conditions (`approve`): the Vet has signed the intake examination record for the current submission,
+`HealthStatus` is `Healthy` or `Monitor`, and `TrainingEligibility` is not `Not Eligible`.
 
-### 4.3 Giấy tờ
+### 4.3 Documents
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/horses/{HorseID}/documents` | xem được ngựa | Owner chỉ thấy giấy tờ có `IsVisibleToOwner: true` |
-| POST | `/horses/{HorseID}/documents` | Owner (ngựa mình), Manager | `{"DocumentName", "DocumentType", "FileUrl", "IsVisibleToOwner"?}` |
+| GET | `/horses/{HorseID}/documents` | can view the horse | Owner only sees documents with `IsVisibleToOwner: true` |
+| POST | `/horses/{HorseID}/documents` | Owner (own horse), Manager | `{"DocumentName", "DocumentType", "FileUrl", "IsVisibleToOwner"?}` |
 
 `DocumentType`: `Passport`, `Microchip Certificate`, `Ownership Proof`, `Handover Record`, `Contract`, `Other`.
-Backend **chỉ lưu đường dẫn** (`FileUrl`), chưa nhận file. Tạm thời upload lên Google Drive rồi dán link.
+The backend **only stores the link** (`FileUrl`) and does not accept files yet. For now, upload to Google Drive and paste the link.
 
-### 4.4 Khám bệnh (Vet)
+### 4.4 Examinations (Vet)
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/vet/pending-initial-exams` | Vet | ngựa `PendingExam` trong CLB chưa có phiếu khám đầu vào đã chốt |
-| GET | `/horses/{HorseID}/medical-records` | nhân sự CLB | Vet thấy cả phiếu nháp; người khác chỉ thấy phiếu đã chốt. Owner xem `HealthSummary` |
-| POST | `/horses/{HorseID}/medical-records` | Vet | tạo phiếu nháp |
-| GET | `/medical-records/{MedicalRecordID}` | nhân sự CLB | |
-| PATCH | `/medical-records/{MedicalRecordID}` | Vet lập phiếu | khi còn `Draft` |
-| DELETE | `/medical-records/{MedicalRecordID}` | Vet lập phiếu | khi còn `Draft` |
-| POST | `/medical-records/{MedicalRecordID}/sign` | Vet lập phiếu | chốt phiếu (`Signed`), cập nhật `Horse.CurrentHealthStatus` |
-| GET | `/medical-records/{MedicalRecordID}/amendments` | nhân sự CLB | |
-| POST | `/medical-records/{MedicalRecordID}/amendments` | Vet | `{"Reason", "AmendedContent"}`; chỉ cho phiếu đã chốt |
+| GET | `/vet/pending-initial-exams` | Vet | `PendingExam` horses in the club without a signed intake examination record |
+| GET | `/horses/{HorseID}/medical-records` | club staff | The Vet also sees draft records; others only see signed records. Owners view `HealthSummary` |
+| POST | `/horses/{HorseID}/medical-records` | Vet | creates a draft record |
+| GET | `/medical-records/{MedicalRecordID}` | club staff | |
+| PATCH | `/medical-records/{MedicalRecordID}` | Vet who created the record | while still `Draft` |
+| DELETE | `/medical-records/{MedicalRecordID}` | Vet who created the record | while still `Draft` |
+| POST | `/medical-records/{MedicalRecordID}/sign` | Vet who created the record | signs the record (`Signed`), updates `Horse.CurrentHealthStatus` |
+| GET | `/medical-records/{MedicalRecordID}/amendments` | club staff | |
+| POST | `/medical-records/{MedicalRecordID}/amendments` | Vet | `{"Reason", "AmendedContent"}`; only for signed records |
 
-Vet **trực** khám: không phân công Vet trước, Vet nào trong CLB cũng nhận được ngựa trong hàng chờ.
-Mỗi lần nộp hồ sơ chỉ có **một** phiếu khám đầu vào; `DraftMedicalRecordID` khác `null` nghĩa là đã có Vet khám dở.
+Vets examine **on duty**: no Vet is assigned in advance; any Vet in the club can pick up a horse from the queue.
+Each submission has only **one** intake examination record; a non-`null` `DraftMedicalRecordID` means a Vet has an examination in progress.
 
-Body tạo phiếu:
+Body for creating a record:
 
 ```json
 {
   "ExamType": "Initial Exam",
   "WeightKg": 480.5, "HeightCm": 162.0,
-  "Symptoms": "Không có dấu hiệu bất thường",
-  "Diagnosis": "Bình thường",
-  "Conclusion": "Đủ điều kiện tiếp nhận",
+  "Symptoms": "No abnormal signs",
+  "Diagnosis": "Normal",
+  "Conclusion": "Eligible for intake",
   "TreatmentPlan": null,
   "HealthStatus": "Healthy",
   "TrainingEligibility": "Eligible",
   "RestrictionNote": null,
   "FollowUpDate": null,
-  "Note": "Mục đích khám: tiếp nhận vào CLB"
+  "Note": "Purpose of exam: intake into the club"
 }
 ```
 
-- `ExamType`: `Initial Exam` (chỉ khi `PendingExam`), `Routine Exam`, `Injury Exam`, `Follow-up`, `Emergency` (chỉ khi ngựa `Approved`).
-- `ExamDate` bỏ trống = thời điểm hiện tại.
-- Khi chốt bắt buộc có `HealthStatus`, `TrainingEligibility`; nếu `Restricted` thì phải có `RestrictionNote`.
-- `HealthStatus` của phiếu: `Healthy`, `Monitor`, `Injured`, `Recovering`, `Isolated`.
+- `ExamType`: `Initial Exam` (only when `PendingExam`), `Routine Exam`, `Injury Exam`, `Follow-up`, `Emergency` (only when the horse is `Approved`).
+- Leaving `ExamDate` empty = the current time.
+- When signing, `HealthStatus` and `TrainingEligibility` are required; if `Restricted`, `RestrictionNote` is required.
+- Record `HealthStatus`: `Healthy`, `Monitor`, `Injured`, `Recovering`, `Isolated`.
 - `TrainingEligibility`: `Eligible`, `Restricted`, `Not Eligible`.
 
-Phiếu trả về:
+Returned record:
 
 ```json
 {
@@ -259,7 +260,7 @@ Phiếu trả về:
   "RegistrationRequestID": 1, "TrainingSessionID": null,
   "ExamType": "Initial Exam", "ExamDate": "2026-10-10T09:30:00",
   "WeightKg": 480.5, "HeightCm": 162.0,
-  "Symptoms": "Không có dấu hiệu bất thường", "Diagnosis": "Bình thường", "Conclusion": "Đủ điều kiện tiếp nhận",
+  "Symptoms": "No abnormal signs", "Diagnosis": "Normal", "Conclusion": "Eligible for intake",
   "InjuryLocation": null, "TreatmentPlan": null,
   "HealthStatus": "Healthy", "TrainingEligibility": "Eligible", "RestrictionNote": null,
   "FollowUpDate": null, "Note": null,
@@ -267,25 +268,25 @@ Phiếu trả về:
 }
 ```
 
-### 4.5 Yêu cầu sửa lý lịch (sau khi `Approved`)
+### 4.5 Profile change requests (after `Approved`)
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| POST | `/horses/{HorseID}/profile-change-requests` | Owner của ngựa | `{"Changes": {"CoatColor": "Dark Bay"}, "Reason", "EvidenceDocumentID"?}` |
-| GET | `/profile-change-requests?Status=Pending&HorseID=` | Manager (CLB mình), Owner (của mình) | |
-| GET | `/profile-change-requests/{id}` | như trên | |
-| POST | `/profile-change-requests/{id}/approve` | Manager | `{"ReviewNote"?}`; backend áp dụng thay đổi vào ngựa |
-| POST | `/profile-change-requests/{id}/reject` | Manager | `{"ReviewNote"}` bắt buộc |
+| POST | `/horses/{HorseID}/profile-change-requests` | The horse's Owner | `{"Changes": {"CoatColor": "Dark Bay"}, "Reason", "EvidenceDocumentID"?}` |
+| GET | `/profile-change-requests?Status=Pending&HorseID=` | Manager (own club), Owner (own requests) | |
+| GET | `/profile-change-requests/{id}` | same as above | |
+| POST | `/profile-change-requests/{id}/approve` | Manager | `{"ReviewNote"?}`; the backend applies the changes to the horse |
+| POST | `/profile-change-requests/{id}/reject` | Manager | `{"ReviewNote"}` required |
 
-Trường được xin sửa: `HorseName`, `Breed`, `DateOfBirth`, `CoatColor`, `Gender`, `SireName`, `DamName`, `MicrochipNumber`, `PassportNumber`.
-Mỗi ngựa chỉ có 1 yêu cầu `Pending` tại một thời điểm.
+Fields that can be requested for change: `HorseName`, `Breed`, `DateOfBirth`, `CoatColor`, `Gender`, `SireName`, `DamName`, `MicrochipNumber`, `PassportNumber`.
+Each horse can have only 1 `Pending` request at a time.
 
 ```json
 {
   "ProfileChangeRequestID": 1, "HorseID": 1, "HorseName": "Thunder",
   "RequestedBy": 5, "RequestedAt": "2026-10-11T08:00:00",
   "ChangedFields": {
-    "Reason": "Màu lông thay đổi theo tuổi",
+    "Reason": "Coat color changed with age",
     "Changes": [{"Field": "CoatColor", "OldValue": "Bay", "NewValue": "Dark Bay"}]
   },
   "EvidenceDocumentID": 1, "Status": "Pending",
@@ -293,72 +294,72 @@ Mỗi ngựa chỉ có 1 yêu cầu `Pending` tại một thời điểm.
 }
 ```
 
-### 4.6 Chuồng
+### 4.6 Stalls
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/stalls?Status=` | Manager, nhân sự | kèm `CurrentHorse` (ngựa đang ở) |
+| GET | `/stalls?Status=` | Manager, staff | includes `CurrentHorse` (the horse currently in the stall) |
 | POST | `/stalls` | Manager | `{"StallNumber": "A05", "StallType": "Standard"}` |
-| PATCH | `/stalls/{StallID}` | Manager | `{"StallType"?, "Status": "Maintenance" \| "Available"}`; chuồng đang có ngựa không đổi trạng thái được (`STALL_OCCUPIED`) |
-| POST | `/horses/{HorseID}/move-stall` | Manager | `{"StallID": 3}` – chuyển chuồng (chuồng cũ tự về `Available`) |
+| PATCH | `/stalls/{StallID}` | Manager | `{"StallType"?, "Status": "Maintenance" \| "Available"}`; a stall that currently has a horse cannot change status (`STALL_OCCUPIED`) |
+| POST | `/horses/{HorseID}/move-stall` | Manager | `{"StallID": 3}` – move stall (the old stall automatically returns to `Available`) |
 
-`Status = Occupied` do backend tự đặt khi xếp ngựa vào chuồng, frontend không gửi giá trị này.
+`Status = Occupied` is set automatically by the backend when a horse is placed in a stall; the frontend does not send this value.
 
 ```json
 {"StallID": 1, "ClubID": 1, "StallNumber": "A01", "StallType": "Standard", "Status": "Occupied",
  "CurrentHorse": {"HorseID": 1, "HorseName": "Thunder", "StartDate": "2026-10-10"}}
 ```
 
-Lưu trữ ngựa (`POST /horses/{id}/archive`) giờ làm thêm: kết thúc phân công Trainer (giáo án chưa xong → `Cancelled`,
-buổi tập `Assigned` → `Cancelled`), việc chăm sóc chưa làm → `Skipped`, khẩu phần còn hiệu lực → `Expired`.
+Archiving a horse (`POST /horses/{id}/archive`) now also: ends the trainer assignment (unfinished training plans → `Cancelled`,
+`Assigned` training sessions → `Cancelled`), pending care tasks → `Skipped`, active diet plans → `Expired`.
 
-## 5. Flow 2 – huấn luyện
+## 5. Flow 2 – Training
 
 ```
-Head Trainer đánh giá ngựa ──> giao 1 Trainer phụ trách ──> Trainer soạn giáo án ──> Head Trainer duyệt
-──> Head Trainer xếp buổi tập (Work Rider, Substitute Trainer nếu cần) ──> Work Rider bắt đầu, ghi kết quả
-──> (Substitute ghi nhận xét) ──> Trainer phụ trách đánh giá ──> cần điều chỉnh thì tạo bản giáo án mới
+Head Trainer assesses the horse ──> assigns 1 responsible Trainer ──> Trainer drafts the training plan ──> Head Trainer approves
+──> Head Trainer schedules training sessions (Work Rider, Substitute Trainer if needed) ──> Work Rider starts, records the result
+──> (Substitute records an observation) ──> responsible Trainer reviews ──> if adjustment is needed, create a new training plan version
 ```
 
-Chỉ ngựa `Approved` mới vào huấn luyện. Tất cả API Flow 2 cần quyền `HORSE_VIEW` để xem (nhân sự CLB).
+Only `Approved` horses can enter training. All Flow 2 APIs require the `HORSE_VIEW` permission to view (club staff).
 
-### 5.1 Chuyên môn, Trainer
+### 5.1 Specializations, Trainers
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/specializations` | mọi người | `Flat Racing`, `Steeplechase / Hurdle Racing`, `Harness Racing`, `Endurance / Long-distance Racing`, `Other` |
-| GET | `/trainers?SpecializationID=` | Head Trainer, Manager | trainer trong CLB, chuyên môn, số ngựa đang phụ trách |
-| POST | `/trainers/{UserID}/specializations` | Head Trainer, Manager | `{"SpecializationID": 1}` – gán chuyên môn cho trainer |
-| DELETE | `/trainers/{UserID}/specializations/{SpecializationID}` | Head Trainer, Manager | không xóa được nếu đã dùng trong phân công (`IN_USE`) |
+| GET | `/specializations` | everyone | `Flat Racing`, `Steeplechase / Hurdle Racing`, `Harness Racing`, `Endurance / Long-distance Racing`, `Other` |
+| GET | `/trainers?SpecializationID=` | Head Trainer, Manager | trainers in the club, their specializations, number of horses currently assigned |
+| POST | `/trainers/{UserID}/specializations` | Head Trainer, Manager | `{"SpecializationID": 1}` – assign a specialization to a trainer |
+| DELETE | `/trainers/{UserID}/specializations/{SpecializationID}` | Head Trainer, Manager | cannot be deleted if already used in a trainer assignment (`IN_USE`) |
 
 ```json
 [{"UserID": 4, "FullName": "Demo Trainer", "Email": "trainer@equi.local", "Phone": null,
   "Specializations": [{"SpecializationID": 1, "SpecializationName": "Flat Racing"}], "ActiveHorseCount": 2}]
 ```
 
-Trainer phải có chuyên môn (`TrainerSpecialization`) trùng với chuyên môn của phân công (ràng buộc khóa ngoại trong SQL).
+The trainer must have a specialization (`TrainerSpecialization`) matching the specialization of the assignment (a foreign key constraint in SQL).
 
-### 5.2 Đánh giá ngựa
+### 5.2 Horse assessment
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/horses/{HorseID}/assessments` | nhân sự | mới nhất trước |
+| GET | `/horses/{HorseID}/assessments` | staff | newest first |
 | POST | `/horses/{HorseID}/assessments` | Head Trainer | `{"SpecializationID", "QualityScore"? (0–100), "FitnessLevel"?, "AssessmentNote"?, "DecisionStatus"?}` |
 
 - `FitnessLevel`: `Excellent`, `Good`, `Average`, `Needs Monitoring`.
-- `DecisionStatus`: `Recommended` (mặc định, phù hợp) hoặc `Rejected` (không phù hợp). Đánh giá `Recommended` mới
-  làm các đánh giá `Recommended` cũ **cùng chuyên môn** chuyển `Superseded`.
+- `DecisionStatus`: `Recommended` (default, suitable) or `Rejected` (not suitable). A new `Recommended` assessment
+  moves older `Recommended` assessments **of the same specialization** to `Superseded`.
 
-### 5.3 Phân công Trainer phụ trách
+### 5.3 Trainer assignment
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/trainer-assignments?HorseID=&TrainerID=&Status=Active&mine=1` | nhân sự | `mine=1`: trainer xem ngựa mình phụ trách |
-| GET | `/trainer-assignments/{id}` | nhân sự | |
+| GET | `/trainer-assignments?HorseID=&TrainerID=&Status=Active&mine=1` | staff | `mine=1`: a trainer sees the horses assigned to them |
+| GET | `/trainer-assignments/{id}` | staff | |
 | POST | `/trainer-assignments` | Head Trainer | `{"HorseID", "TrainerID", "SpecializationID", "AssessmentID"?, "StartDate"?, "AssignmentNote"?}` |
-| POST | `/trainer-assignments/{id}/end` | Head Trainer | `{"Reason"?}` – kết thúc; giáo án chưa xong và buổi tập `Assigned` bị hủy |
+| POST | `/trainer-assignments/{id}/end` | Head Trainer | `{"Reason"?}` – ends the assignment; unfinished training plans and `Assigned` training sessions are cancelled |
 
-Mỗi ngựa chỉ có **1** trainer phụ trách đang `Active` (`ALREADY_ASSIGNED` nếu đã có; muốn đổi thì `end` rồi giao mới).
+Each horse has only **1** `Active` responsible trainer (`ALREADY_ASSIGNED` if one exists; to change, `end` it and then assign a new one).
 
 ```json
 {"TrainerHorseAssignmentID": 1, "HorseID": 1, "HorseName": "Thunder", "TrainerID": 4, "TrainerName": "Demo Trainer",
@@ -366,100 +367,100 @@ Mỗi ngựa chỉ có **1** trainer phụ trách đang `Active` (`ALREADY_ASSIG
  "AssessmentID": 1, "StartDate": "2026-10-10", "EndDate": null, "Status": "Active", "AssignmentNote": null}
 ```
 
-### 5.4 Work Rider ưu tiên (quen ngựa)
+### 5.4 Preferred work riders (familiar with the horse)
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/horses/{HorseID}/work-rider-preferences?all=1` | nhân sự | mặc định chỉ trả ưu tiên còn hiệu lực |
-| POST | `/horses/{HorseID}/work-rider-preferences` | Head Trainer | `{"WorkRiderID", "Priority"? (1 = ưu tiên nhất), "Note"?}` |
+| GET | `/horses/{HorseID}/work-rider-preferences?all=1` | staff | by default returns only preferences still in effect |
+| POST | `/horses/{HorseID}/work-rider-preferences` | Head Trainer | `{"WorkRiderID", "Priority"? (1 = highest priority), "Note"?}` |
 | POST | `/work-rider-preferences/{PreferenceID}/end` | Head Trainer | |
 
-Chỉ để gợi ý khi xếp buổi tập; mỗi buổi vẫn chọn Work Rider riêng.
+Only used as suggestions when scheduling training sessions; each session still selects its own Work Rider.
 
-### 5.5 Giáo án
+### 5.5 Training plans
 
 ```
 Draft ──submit──> Pending Approval ──approve──> Active ──complete──> Completed
-  ^                      │ return (ReviewNote bắt buộc)
+  ^                      │ return (ReviewNote required)
   └──────────────────────┘
 Draft / Pending Approval / Active ──cancel──> Cancelled
-Active ──revise──> bản Draft mới; bản mới được duyệt thì bản cũ tự Completed
+Active ──revise──> new Draft version; when the new version is approved, the old one becomes Completed automatically
 ```
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/training-plans?HorseID=&TrainerID=&Status=&mine=1` | nhân sự | `Status=Pending Approval` cho màn duyệt của Head Trainer |
-| GET | `/training-plans/{id}` | nhân sự | kèm `Stages` |
-| POST | `/training-plans` | Trainer phụ trách | tạo `Draft`, có thể gửi luôn `Stages` |
-| PATCH | `/training-plans/{id}` | Trainer phụ trách | chỉ khi `Draft`; `Goal`, `StartDate`, `EndDate`, `OverallIntensity`, `Note` |
-| POST | `/training-plans/{id}/stages` | Trainer phụ trách | thêm giai đoạn (khi `Draft`) |
-| PATCH / DELETE | `/training-plan-stages/{TrainingPlanStageID}` | Trainer phụ trách | khi `Draft` |
-| POST | `/training-plans/{id}/submit` | Trainer phụ trách | cần ít nhất 1 giai đoạn (`NO_STAGES`) |
+| GET | `/training-plans?HorseID=&TrainerID=&Status=&mine=1` | staff | `Status=Pending Approval` for the Head Trainer's approval screen |
+| GET | `/training-plans/{id}` | staff | includes `Stages` |
+| POST | `/training-plans` | responsible Trainer | creates a `Draft`, can send `Stages` at the same time |
+| PATCH | `/training-plans/{id}` | responsible Trainer | only when `Draft`; `Goal`, `StartDate`, `EndDate`, `OverallIntensity`, `Note` |
+| POST | `/training-plans/{id}/stages` | responsible Trainer | add a stage (when `Draft`) |
+| PATCH / DELETE | `/training-plan-stages/{TrainingPlanStageID}` | responsible Trainer | when `Draft` |
+| POST | `/training-plans/{id}/submit` | responsible Trainer | requires at least 1 stage (`NO_STAGES`) |
 | POST | `/training-plans/{id}/approve` | Head Trainer | `{"ReviewNote"?}` → `Active` |
-| POST | `/training-plans/{id}/return` | Head Trainer | `{"ReviewNote"}` → về `Draft` |
-| POST | `/training-plans/{id}/complete` | Trainer phụ trách, Head Trainer | buổi `Assigned` còn lại bị hủy |
-| POST | `/training-plans/{id}/cancel` | Trainer phụ trách, Head Trainer | `{"Reason"?}` |
-| POST | `/training-plans/{id}/revise` | Trainer phụ trách | chép giáo án `Active`/`Completed` thành bản `Draft` mới để điều chỉnh |
+| POST | `/training-plans/{id}/return` | Head Trainer | `{"ReviewNote"}` → back to `Draft` |
+| POST | `/training-plans/{id}/complete` | responsible Trainer, Head Trainer | remaining `Assigned` sessions are cancelled |
+| POST | `/training-plans/{id}/cancel` | responsible Trainer, Head Trainer | `{"Reason"?}` |
+| POST | `/training-plans/{id}/revise` | responsible Trainer | copies an `Active`/`Completed` training plan into a new `Draft` version for adjustment |
 
 Body `POST /training-plans`:
 
 ```json
 {
-  "HorseID": 1, "Goal": "Chuẩn bị giải tháng 12", "StartDate": "2026-10-12", "EndDate": "2026-12-10",
+  "HorseID": 1, "Goal": "Prepare for the December race", "StartDate": "2026-10-12", "EndDate": "2026-12-10",
   "OverallIntensity": "Moderate", "Note": null,
   "Stages": [
-    {"StageName": "Nền tảng", "StartDate": "2026-10-12", "EndDate": "2026-11-01", "Intensity": "Low",
-     "TrainingLoad": 30, "DistanceTargetKm": 3, "Surface": "Turf", "Goal": "Làm quen", "Note": null},
-    {"StageName": "Tăng tốc", "StartDate": "2026-11-02", "Intensity": "High", "TrainingLoad": 70}
+    {"StageName": "Foundation", "StartDate": "2026-10-12", "EndDate": "2026-11-01", "Intensity": "Low",
+     "TrainingLoad": 30, "DistanceTargetKm": 3, "Surface": "Turf", "Goal": "Familiarization", "Note": null},
+    {"StageName": "Speed build-up", "StartDate": "2026-11-02", "Intensity": "High", "TrainingLoad": 70}
   ]
 }
 ```
 
 - `OverallIntensity`, `Intensity`: `Low`, `Moderate`, `High`, `Very High`.
-- `StageOrder` bỏ trống = tự đánh số 1, 2, 3...; giai đoạn phải nằm trong thời gian giáo án.
-- Ngựa đang bị khóa `Full` trùng thời gian giáo án thì không duyệt được (`TRAINING_LOCK_FULL`).
+- `StageOrder` left empty = auto-numbered 1, 2, 3...; stages must fall within the training plan's period.
+- If the horse has a `Full` lock overlapping the training plan's period, the plan cannot be approved (`TRAINING_LOCK_FULL`).
 
-Giáo án trả về:
+Returned training plan:
 
 ```json
 {
   "TrainingPlanID": 1, "TrainerHorseAssignmentID": 1, "HorseID": 1, "HorseName": "Thunder",
-  "TrainerID": 4, "TrainerName": "Demo Trainer", "Goal": "Chuẩn bị giải tháng 12",
+  "TrainerID": 4, "TrainerName": "Demo Trainer", "Goal": "Prepare for the December race",
   "StartDate": "2026-10-12", "EndDate": "2026-12-10", "OverallIntensity": "Moderate", "Note": null,
   "Status": "Active", "CreatedAt": "2026-10-10T08:00:00", "SubmittedAt": "2026-10-10T08:05:00",
-  "ApprovedByHeadTrainerID": 2, "ApprovedAt": "2026-10-10T09:00:00", "ReviewNote": "Đồng ý",
-  "Stages": [{"TrainingPlanStageID": 1, "TrainingPlanID": 1, "StageName": "Nền tảng", "StageOrder": 1, "Goal": null,
+  "ApprovedByHeadTrainerID": 2, "ApprovedAt": "2026-10-10T09:00:00", "ReviewNote": "Agreed",
+  "Stages": [{"TrainingPlanStageID": 1, "TrainingPlanID": 1, "StageName": "Foundation", "StageOrder": 1, "Goal": null,
               "StartDate": "2026-10-12", "EndDate": "2026-11-01", "Intensity": "Low", "TrainingLoad": 30.0,
               "DistanceTargetKm": 3.0, "Surface": "Turf", "Note": null}]
 }
 ```
 
-Mã lỗi riêng: `NOT_PLAN_OWNER` (không phải trainer đang phụ trách), `NO_STAGES`, `DRAFT_EXISTS` (đã có bản đang soạn / chờ duyệt),
-`ASSIGNMENT_ENDED`, `IN_USE` (giai đoạn đã có buổi tập).
+Specific error codes: `NOT_PLAN_OWNER` (not the currently assigned trainer), `NO_STAGES`, `DRAFT_EXISTS` (a version is already being drafted / pending approval),
+`ASSIGNMENT_ENDED`, `IN_USE` (the stage already has training sessions).
 
-### 5.6 Buổi tập
+### 5.6 Training sessions
 
 ```
-Assigned ──start (Work Rider, đúng ngày)──> In Progress ──result (Work Rider)──> Completed
-Assigned / In Progress ──stop (trainer đang giám sát, Head Trainer) / cancel (Head Trainer)──> Cancelled
-Assigned / In Progress ──missed (Head Trainer, từ ngày tập trở đi)──> Missed
+Assigned ──start (Work Rider, on the session day)──> In Progress ──result (Work Rider)──> Completed
+Assigned / In Progress ──stop (supervising trainer, Head Trainer) / cancel (Head Trainer)──> Cancelled
+Assigned / In Progress ──missed (Head Trainer, from the session day onward)──> Missed
 ```
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/training-sessions?Date=&From=&To=&HorseID=&TrainingPlanID=&WorkRiderID=&Status=&mine=1` | nhân sự | `mine=1`: Work Rider → buổi mình cưỡi; Trainer → buổi mình giám sát (phụ trách hoặc Substitute) |
-| GET | `/training-sessions/{id}` | nhân sự | |
-| POST | `/training-sessions` | Head Trainer | xếp buổi tập (giáo án phải `Active`) |
-| PATCH | `/training-sessions/{id}` | Head Trainer | khi `Assigned`: đổi Work Rider, Substitute, ngày giờ, cường độ... |
-| POST | `/training-sessions/{id}/start` | Work Rider của buổi | đúng ngày tập |
-| POST | `/training-sessions/{id}/result` | Work Rider của buổi | ghi kết quả → `Completed` |
-| POST | `/training-sessions/{id}/substitute-observation` | Substitute Trainer của buổi | `{"SubstituteObservation"}` (bắt buộc với buổi giám sát thay) |
-| POST | `/training-sessions/{id}/stop` | trainer đang giám sát, Head Trainer | `{"Reason", "ReportHealth"?, "Severity"?, "Description"?}` |
+| GET | `/training-sessions?Date=&From=&To=&HorseID=&TrainingPlanID=&WorkRiderID=&Status=&mine=1` | staff | `mine=1`: Work Rider → sessions they ride; Trainer → sessions they supervise (responsible or Substitute) |
+| GET | `/training-sessions/{id}` | staff | |
+| POST | `/training-sessions` | Head Trainer | schedule a training session (the training plan must be `Active`) |
+| PATCH | `/training-sessions/{id}` | Head Trainer | when `Assigned`: change Work Rider, Substitute, date/time, intensity... |
+| POST | `/training-sessions/{id}/start` | the session's Work Rider | on the session day |
+| POST | `/training-sessions/{id}/result` | the session's Work Rider | record the result → `Completed` |
+| POST | `/training-sessions/{id}/substitute-observation` | the session's Substitute Trainer | `{"SubstituteObservation"}` (required for substitute-supervised sessions) |
+| POST | `/training-sessions/{id}/stop` | supervising trainer, Head Trainer | `{"Reason", "ReportHealth"?, "Severity"?, "Description"?}` |
 | POST | `/training-sessions/{id}/cancel` | Head Trainer | `{"Reason"?}` |
 | POST | `/training-sessions/{id}/missed` | Head Trainer | `{"Reason"?}` |
-| POST | `/training-sessions/{id}/review` | Trainer phụ trách | đánh giá buổi `Completed` (mỗi buổi 1 lần) |
-| GET | `/training-reviews?AdjustmentRequired=1&HorseID=&Days=14` | nhân sự | Head Trainer theo dõi đề nghị điều chỉnh giáo án |
-| GET | `/training-dashboard?HorseID=` | nhân sự | màn tổng quan trước khi xếp lịch (giống view `vw_HorseTrainingDashboard`) |
+| POST | `/training-sessions/{id}/review` | responsible Trainer | review a `Completed` session (once per session) |
+| GET | `/training-reviews?AdjustmentRequired=1&HorseID=&Days=14` | staff | Head Trainer tracks training plan adjustment requests |
+| GET | `/training-dashboard?HorseID=` | staff | overview screen before scheduling (same as the `vw_HorseTrainingDashboard` view) |
 
 Body `POST /training-sessions`:
 
@@ -468,16 +469,16 @@ Body `POST /training-sessions`:
   "TrainingPlanStageID": 1, "WorkRiderID": 5, "SubstituteTrainerID": null,
   "SessionDate": "2026-10-12", "StartTime": "06:00", "EndTime": null, "SequenceNo": null,
   "TrainingType": "Canter", "DurationPlannedMinutes": 45, "DistancePlannedKm": 3.5, "TargetSpeedKmh": 30,
-  "TrainingLoad": 30, "Surface": "Turf", "Location": "Đường chạy số 2", "Instructions": "Khởi động 10 phút"
+  "TrainingLoad": 30, "Surface": "Turf", "Location": "Track no. 2", "Instructions": "Warm up for 10 minutes"
 }
 ```
 
-- `SubstituteTrainerID`: `null` = trainer phụ trách tự giám sát. Chọn Trainer khác (hoặc Head Trainer tự giám sát)
-  khi trainer phụ trách bận. Chọn trùng trainer phụ trách thì backend coi như `null`.
-- `SequenceNo` bỏ trống = thứ tự tiếp theo trong ngày của Work Rider (`RIDER_SLOT_TAKEN` nếu trùng).
-- Không xếp vào ngày đã qua; ngày tập phải nằm trong giai đoạn.
-- **Training Lock**: `Full` → không xếp / bắt đầu được (`TRAINING_LOCK_FULL`); `Restricted` → phải ghi `TrainingLoad`
-  và không vượt `MaxIntensity` (`TRAINING_LOCK_RESTRICTED`). Màn xếp lịch nên gọi `/training-dashboard` để hiện hạn chế.
+- `SubstituteTrainerID`: `null` = the responsible trainer supervises. Choose another Trainer (or the Head Trainer supervises)
+  when the responsible trainer is busy. If it is the same as the responsible trainer, the backend treats it as `null`.
+- `SequenceNo` left empty = the next slot in the Work Rider's day (`RIDER_SLOT_TAKEN` if it conflicts).
+- Cannot schedule on a past date; the session date must fall within the stage.
+- **Training Lock**: `Full` → cannot schedule / start (`TRAINING_LOCK_FULL`); `Restricted` → `TrainingLoad` is required
+  and must not exceed `MaxIntensity` (`TRAINING_LOCK_RESTRICTED`). The scheduling screen should call `/training-dashboard` to show restrictions.
 
 Body `POST /training-sessions/{id}/result`:
 
@@ -485,42 +486,42 @@ Body `POST /training-sessions/{id}/result`:
 {
   "ActualDurationMinutes": 44, "ActualDistanceKm": 3.4, "AvgSpeedKmh": 28.5, "MaxSpeedKmh": 41,
   "AvgHeartRate": 150, "MaxHeartRate": 190, "RecoveryMinutes": 12, "PerformanceScore": 78,
-  "RiderObservation": "Hơi nặng chân phải cuối buổi", "VideoUrl": null
+  "RiderObservation": "Slightly heavy on the right leg at the end of the session", "VideoUrl": null
 }
 ```
 
 Body `POST /training-sessions/{id}/review`:
 
 ```json
-{"Evaluation": "Good", "TrainerComment": "Ổn", "AdjustmentRequired": true, "AdjustmentNote": "Giảm cự ly tuần sau"}
+{"Evaluation": "Good", "TrainerComment": "Fine", "AdjustmentRequired": true, "AdjustmentNote": "Reduce distance next week"}
 ```
 
-`Evaluation`: `Excellent`, `Good`, `Average`, `Needs Improvement`. `AdjustmentRequired: true` thì bắt buộc `AdjustmentNote`
-và Head Trainer thấy trong thông báo.
+`Evaluation`: `Excellent`, `Good`, `Average`, `Needs Improvement`. If `AdjustmentRequired: true`, `AdjustmentNote` is required
+and the Head Trainer sees it in notifications.
 
-Buổi tập trả về (giống view `vw_WorkRiderDailySchedule`, kèm kết quả và đánh giá):
+Returned training session (same as the `vw_WorkRiderDailySchedule` view, plus result and review):
 
 ```json
 {
-  "TrainingSessionID": 1, "TrainingPlanStageID": 1, "TrainingPlanID": 1, "StageName": "Nền tảng",
+  "TrainingSessionID": 1, "TrainingPlanStageID": 1, "TrainingPlanID": 1, "StageName": "Foundation",
   "HorseID": 1, "HorseName": "Thunder", "HorseCode": "EQ-001",
   "WorkRiderID": 5, "WorkRiderName": "Demo Work Rider", "AssignedByHeadTrainerID": 2,
   "SubstituteTrainerID": 6, "AssignedTrainerID": 4, "AssignedTrainerName": "Demo Trainer",
   "SupervisingTrainerID": 6, "SupervisingTrainerName": "Trainer B", "IsSubstitute": true,
   "SessionDate": "2026-10-12", "StartTime": "06:00:00", "EndTime": "06:45:00", "SequenceNo": 1,
   "TrainingType": "Canter", "DurationPlannedMinutes": 45, "DistancePlannedKm": 3.5, "TargetSpeedKmh": null,
-  "TrainingLoad": 30.0, "Surface": "Turf", "Location": "Đường chạy số 2", "Instructions": "Khởi động 10 phút",
+  "TrainingLoad": 30.0, "Surface": "Turf", "Location": "Track no. 2", "Instructions": "Warm up for 10 minutes",
   "Status": "Completed",
   "Result": {"TrainingResultID": 1, "TrainingSessionID": 1, "ActualDurationMinutes": 44, "ActualDistanceKm": 3.4,
              "AvgSpeedKmh": 28.5, "MaxSpeedKmh": 41.0, "AvgHeartRate": 150, "MaxHeartRate": 190, "RecoveryMinutes": 12,
-             "PerformanceScore": 78.0, "RiderObservation": "Hơi nặng chân phải cuối buổi", "VideoUrl": null,
-             "SubstituteObservation": "Ngựa chạy đều", "RecordedAt": "2026-10-12T06:50:00"},
+             "PerformanceScore": 78.0, "RiderObservation": "Slightly heavy on the right leg at the end of the session", "VideoUrl": null,
+             "SubstituteObservation": "The horse ran steadily", "RecordedAt": "2026-10-12T06:50:00"},
   "Review": null
 }
 ```
 
-Mã lỗi riêng: `PLAN_NOT_ACTIVE`, `RIDER_SLOT_TAKEN`, `NOT_SESSION_RIDER`, `WRONG_DAY`, `NOT_SUBSTITUTE`,
-`NOT_ASSIGNED_TRAINER`, `ALREADY_REVIEWED`, `NOT_YET` (đánh vắng buổi chưa tới ngày).
+Specific error codes: `PLAN_NOT_ACTIVE`, `RIDER_SLOT_TAKEN`, `NOT_SESSION_RIDER`, `WRONG_DAY`, `NOT_SUBSTITUTE`,
+`NOT_ASSIGNED_TRAINER`, `ALREADY_REVIEWED`, `NOT_YET` (marking a session as missed before its date).
 
 `GET /training-dashboard`:
 
@@ -533,317 +534,320 @@ Mã lỗi riêng: `PLAN_NOT_ACTIVE`, `RIDER_SLOT_TAKEN`, `NOT_SESSION_RIDER`, `W
   "LatestAvgSpeedKmh": 28.5, "LatestAvgHeartRate": 150, "LatestRecoveryMinutes": 12}]
 ```
 
-## 6. Flow 3 – y tế
+## 6. Flow 3 – Medical
 
 ```
-Groom / Work Rider / Trainer / Head Trainer báo sự cố ──> hàng chờ Vet (Urgent trước)
-   (Trainer phụ trách và Head Trainer thấy trong thông báo)
-──> Vet nhận ca ──> lập phiếu khám gắn báo cáo ──> kê thuốc ──> chốt phiếu (+ Training Lock)
-──> xử lý xong báo cáo ──> tái khám đạt ──> mở khóa
+Groom / Work Rider / Trainer / Head Trainer reports an issue ──> Vet queue (Urgent first)
+   (responsible Trainer and Head Trainer see it in notifications)
+──> Vet takes the case ──> creates a medical record linked to the report ──> prescribes treatment ──> signs the record (+ Training Lock)
+──> resolves the report ──> follow-up examination passes ──> release the lock
 ```
 
-Phiếu khám (`/horses/{id}/medical-records`, `/medical-records/...`) dùng chung với Flow 1, xem mục 4.4. Flow 3 thêm:
+Medical records (`/horses/{id}/medical-records`, `/medical-records/...`) are shared with Flow 1, see section 4.4. Flow 3 adds:
 
-| Mục | Thay đổi |
+| Item | Change |
 |---|---|
-| Tạo phiếu | thêm `"HealthReportID"` (phiếu xử lý báo cáo nào) và `"TrainingSessionID"` (phát hiện trong buổi tập nào) |
-| `TrainingEligibility = Restricted` | phải có `RestrictionNote` ngay cả khi lưu nháp (ràng buộc CHECK trong SQL) |
-| Xóa phiếu nháp | xóa luôn thuốc kê trên phiếu, gỡ liên kết báo cáo sức khỏe |
-| Chốt phiếu | body tùy chọn `{"TrainingLock": {...}}`; response có thêm `TrainingLock` (xem 6.3) |
+| Create record | adds `"HealthReportID"` (which report the record handles) and `"TrainingSessionID"` (which training session the issue was found in) |
+| `TrainingEligibility = Restricted` | must have `RestrictionNote` even when saving a draft (CHECK constraint in SQL) |
+| Delete draft record | also deletes the treatments prescribed on the record and unlinks the health report |
+| Sign record | optional body `{"TrainingLock": {...}}`; response additionally includes `TrainingLock` (see 6.3) |
 
-### 6.1 Báo cáo sức khỏe
+### 6.1 Health reports
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/horses/{HorseID}/health-reports?open=1` | nhân sự | **mở form báo cáo thì gọi trước**: có báo cáo đang mở thì thêm ghi chú thay vì báo trùng |
+| GET | `/horses/{HorseID}/health-reports?open=1` | staff | **call this first when opening the report form**: if there is an open report, add a note instead of filing a duplicate |
 | POST | `/horses/{HorseID}/health-reports` | Groom, Work Rider, Trainer, Head Trainer | `{"Severity": "Urgent" \| "Normal", "Description", "ImageUrl"?, "TrainingSessionID"?}` |
-| GET | `/health-reports?open=1&Status=&Severity=&HorseID=&mine=1` | nhân sự | `open=1`: hàng chờ Vet, `Urgent` trước rồi cũ trước |
-| GET | `/health-reports/{id}` | nhân sự | kèm `Notes` |
-| POST | `/health-reports/{id}/notes` | người báo được, Vet | `{"Content"}` |
-| POST | `/health-reports/{id}/take` | Vet | Vet trực nhận ca: `Reported` → `Reviewing` |
-| POST | `/health-reports/{id}/resolve` | Vet | `{"VetNote"?, "MedicalRecordID"?}` (cần 1 trong 2) → `Resolved` |
+| GET | `/health-reports?open=1&Status=&Severity=&HorseID=&mine=1` | staff | `open=1`: Vet queue, `Urgent` first, then oldest first |
+| GET | `/health-reports/{id}` | staff | includes `Notes` |
+| POST | `/health-reports/{id}/notes` | anyone allowed to report, Vet | `{"Content"}` |
+| POST | `/health-reports/{id}/take` | Vet | the on-duty Vet takes the case: `Reported` → `Reviewing` |
+| POST | `/health-reports/{id}/resolve` | Vet | `{"VetNote"?, "MedicalRecordID"?}` (one of the two is required) → `Resolved` |
 
-- Báo `Urgent` gắn `TrainingSessionID` của buổi đang `In Progress` → buổi tập tự dừng (`Cancelled`), response có `"StoppedSession": true`.
-- Trainer đang giám sát cũng có thể dừng buổi và báo luôn: `POST /training-sessions/{id}/stop` với `"ReportHealth": true` (mục 5.6).
-- Vet lập phiếu khám với `"HealthReportID"` → báo cáo tự gắn phiếu, chuyển `Reviewing`. Mỗi báo cáo gắn 1 phiếu (`REPORT_ALREADY_LINKED`).
+- An `Urgent` report linked to the `TrainingSessionID` of a session that is `In Progress` → the session stops automatically (`Cancelled`), and the response includes `"StoppedSession": true`.
+- The supervising trainer can also stop the session and report at once: `POST /training-sessions/{id}/stop` with `"ReportHealth": true` (section 5.6).
+- Vet creates a medical record with `"HealthReportID"` → the report is automatically linked to the record and moves to `Reviewing`. Each report is linked to 1 record (`REPORT_ALREADY_LINKED`).
 
 ```json
 {
   "HealthReportID": 1, "HorseID": 1, "HorseName": "Thunder", "ReportedBy": 7, "ReportedByName": "Demo Groom",
   "ReportedByRoles": ["GROOM"], "TrainingSessionID": null, "ReportedAt": "2026-10-12T07:30:00",
-  "Severity": "Normal", "Description": "Chân trước trái hơi nóng", "ImageUrl": null,
+  "Severity": "Normal", "Description": "Left front leg is slightly warm", "ImageUrl": null,
   "Status": "Reviewing", "VetID": 3, "VetName": "Demo Veterinarian", "MedicalRecordID": 2, "VetNote": null,
   "ResolvedAt": null,
   "Notes": [{"HealthReportNoteID": 1, "HealthReportID": 1, "NoteBy": 5, "NoteByName": "Demo Work Rider",
-             "NoteAt": "2026-10-12T07:45:00", "Content": "Khởi động thấy hơi lệch nhịp"}]
+             "NoteAt": "2026-10-12T07:45:00", "Content": "Gait seemed slightly uneven during warm-up"}]
 }
 ```
 
-Mã lỗi riêng: `REPORT_RESOLVED`, `REPORT_ALREADY_LINKED`.
+Specific error codes: `REPORT_RESOLVED`, `REPORT_ALREADY_LINKED`.
 
-### 6.2 Thuốc điều trị
+### 6.2 Treatments
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/medical-records/{id}/treatments` | nhân sự | |
-| POST | `/medical-records/{id}/treatments` | Vet lập phiếu (phiếu còn `Draft`) | `{"MedicineName", "Dose", "Route", "StartDate", "EndDate"?, "WithdrawalUntil"?, "Note"?}` |
-| PATCH | `/treatments/{TreatmentID}` | Vet | phiếu nháp: Vet lập phiếu sửa tự do; phiếu đã chốt: chỉ `EndDate`, `WithdrawalUntil` |
-| GET | `/horses/{HorseID}/treatments?WithdrawalActive=1` | nhân sự | thuốc còn trong thời gian ngưng thuốc (kiểm tra doping) |
+| GET | `/medical-records/{id}/treatments` | staff | |
+| POST | `/medical-records/{id}/treatments` | Vet who created the record (record still `Draft`) | `{"MedicineName", "Dose", "Route", "StartDate", "EndDate"?, "WithdrawalUntil"?, "Note"?}` |
+| PATCH | `/treatments/{TreatmentID}` | Vet | draft record: the Vet who created it can edit freely; signed record: only `EndDate`, `WithdrawalUntil` |
+| GET | `/horses/{HorseID}/treatments?WithdrawalActive=1` | staff | treatments still within the withdrawal period (doping check) |
 
-`Route`: `Oral`, `Injection`, `Topical`, `Inhalation`, `Other`. Trả thêm `"WithdrawalActive": true/false`.
+`Route`: `Oral`, `Injection`, `Topical`, `Inhalation`, `Other`. Also returns `"WithdrawalActive": true/false`.
 
 ### 6.3 Training Lock
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/training-locks?HorseID=&LockStatus=Active` | nhân sự | |
-| GET | `/training-locks/{id}` | nhân sự | |
+| GET | `/training-locks?HorseID=&LockStatus=Active` | staff | |
+| GET | `/training-locks/{id}` | staff | |
 | POST | `/horses/{HorseID}/training-locks` | Vet | `{"Reason", "LockLevel", "MaxIntensity"?, "LockStartDate"?, "LockEndDate"?, "Details"?}` |
-| PATCH | `/training-locks/{id}` | Vet | đổi mức, cường độ tối đa, ngày mở dự kiến |
-| POST | `/training-locks/{id}/release` | Vet | `{"Note"?}` – cần lần tái khám **chốt sau khi khóa** với kết luận khác `Not Eligible` |
+| PATCH | `/training-locks/{id}` | Vet | change level, maximum intensity, expected release date |
+| POST | `/training-locks/{id}/release` | Vet | `{"Note"?}` – requires a follow-up examination **signed after the lock** with a conclusion other than `Not Eligible` |
 
-- `LockLevel`: `Full` (cấm tập) hoặc `Restricted` (bắt buộc `MaxIntensity`, so với `TrainingLoad` của buổi tập).
-- Mỗi ngựa tối đa 1 lock đang `Active` (`LOCK_EXISTS` → dùng PATCH).
-- Tạo / siết lock → buổi tập `Assigned` trong thời gian khóa bị hủy; response có `"CancelledSessionIDs": [..]`.
-- **Chốt phiếu khám** của ngựa đã tiếp nhận:
-  - gửi `{"TrainingLock": {...}}` → tạo lock (hoặc sửa lock đang có) theo đó;
-  - không gửi mà kết luận `Not Eligible` → backend tự khóa `Full` (hoặc nâng lock `Restricted` lên `Full`);
-  - kết luận `Eligible` **không** tự mở khóa: Vet bấm mở khóa sau tái khám.
+- `LockLevel`: `Full` (no training) or `Restricted` (`MaxIntensity` required, compared against the training session's `TrainingLoad`).
+- Each horse has at most 1 `Active` lock (`LOCK_EXISTS` → use PATCH).
+- Creating / tightening a lock → `Assigned` training sessions within the lock period are cancelled; the response includes `"CancelledSessionIDs": [..]`.
+- **Signing a medical record** of a horse that has been taken in:
+  - sending `{"TrainingLock": {...}}` → creates a lock (or updates the existing lock) accordingly;
+  - not sending it with a `Not Eligible` conclusion → the backend automatically locks `Full` (or raises a `Restricted` lock to `Full`);
+  - an `Eligible` conclusion does **not** release the lock automatically: the Vet releases it after the follow-up examination.
 
 ```json
 {"TrainingLockID": 3, "HorseID": 1, "HorseName": "Thunder", "CreatedByVetID": 3, "CreatedByName": "Demo Veterinarian",
- "Reason": "Viêm gân nhẹ", "LockLevel": "Restricted", "MaxIntensity": 25.0, "LockStartDate": "2026-10-12T09:00:00",
+ "Reason": "Mild tendinitis", "LockLevel": "Restricted", "MaxIntensity": 25.0, "LockStartDate": "2026-10-12T09:00:00",
  "LockEndDate": null, "LockStatus": "Active", "Details": null, "ReleasedByVetID": null, "ReleasedAt": null,
  "CancelledSessionIDs": [12]}
 ```
 
-Mã lỗi riêng: `LOCK_EXISTS`, `FOLLOW_UP_EXAM_REQUIRED`.
+Specific error codes: `LOCK_EXISTS`, `FOLLOW_UP_EXAM_REQUIRED`.
 
-### 6.4 Tiêm phòng, lịch y tế
+### 6.4 Vaccinations, medical schedules
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Used by | Notes |
 |---|---|---|---|
-| GET | `/vaccinations?HorseID=&Status=&DueWithinDays=14` | nhân sự | `DueWithinDays`: lịch tiêm sắp tới / quá hạn và mũi nhắc lại sắp tới |
-| GET / POST | `/horses/{HorseID}/vaccinations` | xem: nhân sự; tạo: Vet | `{"VaccineName", "VaccinationDate", "NextDueDate"?, "Status"?, "Note"?, "ExternalVet"?}` |
-| PATCH | `/vaccinations/{id}` | Vet | vd `{"Status": "Completed", "NextDueDate": "2027-04-01"}` |
-| GET | `/medical-schedules?From=&To=&HorseID=&Status=&ScheduleType=` | nhân sự | |
-| GET / POST | `/horses/{HorseID}/medical-schedules` | xem: nhân sự; tạo: Vet | `{"ScheduleType", "ScheduledDate", "Status"?, "Note"?, "ExternalVet"?}` |
+| GET | `/vaccinations?HorseID=&Status=&DueWithinDays=14` | staff | `DueWithinDays`: upcoming / overdue vaccinations and upcoming boosters |
+| GET / POST | `/horses/{HorseID}/vaccinations` | view: staff; create: Vet | `{"VaccineName", "VaccinationDate", "NextDueDate"?, "Status"?, "Note"?, "ExternalVet"?}` |
+| PATCH | `/vaccinations/{id}` | Vet | e.g. `{"Status": "Completed", "NextDueDate": "2027-04-01"}` |
+| GET | `/medical-schedules?From=&To=&HorseID=&Status=&ScheduleType=` | staff | |
+| GET / POST | `/horses/{HorseID}/medical-schedules` | view: staff; create: Vet | `{"ScheduleType", "ScheduledDate", "Status"?, "Note"?, "ExternalVet"?}` |
 | PATCH | `/medical-schedules/{id}` | Vet | |
 
-- Vaccination `Status`: `Scheduled`, `Completed`, `Overdue`, `Cancelled`. Trả thêm `IsOverdue` (đã quá ngày mà vẫn `Scheduled`).
+- Vaccination `Status`: `Scheduled`, `Completed`, `Overdue`, `Cancelled`. Also returns `IsOverdue` (past the date but still `Scheduled`).
 - `ScheduleType`: `Vaccination`, `Deworming`, `Farrier`, `Routine Examination`. `Status`: `Scheduled`, `Completed`, `Cancelled`, `Overdue`.
-- `"ExternalVet": true` → bác sĩ ngoài (không có tài khoản), `VetID = null`. Mặc định `VetID` = Vet đang đăng nhập.
+- `"ExternalVet": true` → external vet (no account), `VetID = null`. By default `VetID` = the currently logged-in Vet.
 
-## 7. Flow 4 – chăm sóc và dinh dưỡng
+## 7. Flow 4 – Care and nutrition
 
-### 7.1 Khẩu phần
+### 7.1 Diet plans
 
 ```
-Head Trainer lập (Pending) ──Vet approve──> Approved ──Vet adjust──> Adjusted
-     ^                          │ Vet reject (VetNote bắt buộc)
-     └── Head Trainer sửa ── Rejected
+Head Trainer creates (Pending) ──Vet approve──> Approved ──Vet adjust──> Adjusted
+     ^                          │ Vet reject (VetNote required)
+     └── Head Trainer edits ── Rejected
 ```
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Who uses it | Notes |
 |---|---|---|---|
-| GET | `/horses/{HorseID}/diet-plans` | nhân sự | |
-| POST | `/horses/{HorseID}/diet-plans` | Head Trainer | `{"DietDescription"?, "StartDate", "EndDate"?, "Meals": [...]}` (ít nhất 1 bữa) |
-| GET | `/horses/{HorseID}/current-diet` | nhân sự | khẩu phần đang áp dụng hôm nay (`null` nếu chưa có) – màn của Groom |
-| GET | `/diet-plans?Status=Pending&HorseID=` | nhân sự | Vet xem khẩu phần chờ duyệt |
-| GET | `/diet-plans/{id}` | nhân sự | |
-| PATCH | `/diet-plans/{id}` | Head Trainer | khi `Pending`/`Rejected`; gửi `Meals` thì thay toàn bộ bữa; sau khi sửa → `Pending` |
-| POST | `/diet-plans/{id}/approve` | Vet | `{"VetNote"?}` (người lập không tự duyệt) |
+| GET | `/horses/{HorseID}/diet-plans` | staff | |
+| POST | `/horses/{HorseID}/diet-plans` | Head Trainer | `{"DietDescription"?, "StartDate", "EndDate"?, "Meals": [...]}` (at least 1 meal) |
+| GET | `/horses/{HorseID}/current-diet` | staff | diet plan in effect today (`null` if none) – the Groom's screen |
+| GET | `/diet-plans?Status=Pending&HorseID=` | staff | Vet views diet plans awaiting approval |
+| GET | `/diet-plans/{id}` | staff | |
+| PATCH | `/diet-plans/{id}` | Head Trainer | when `Pending`/`Rejected`; sending `Meals` replaces all meals; after editing → `Pending` |
+| POST | `/diet-plans/{id}/approve` | Vet | `{"VetNote"?}` (the creator cannot approve their own plan) |
 | POST | `/diet-plans/{id}/reject` | Vet | `{"VetNote"}` |
-| POST | `/diet-plans/{id}/adjust` | Vet | `{"VetNote", "Meals"?, "EndDate"?...}` – điều chỉnh khẩu phần đang áp dụng |
+| POST | `/diet-plans/{id}/adjust` | Vet | `{"VetNote", "Meals"?, "EndDate"?...}` – adjust the diet plan currently in effect |
 
 ```json
-{"MealTime": "06:00", "FeedType": "Yến mạch", "Quantity": 3, "Unit": "kg", "Note": null}
+{"MealTime": "06:00", "FeedType": "Oats", "Quantity": 3, "Unit": "kg", "Note": null}
 ```
 
-Khẩu phần mới được duyệt: khẩu phần cũ trùng thời gian bắt đầu trước thì kết thúc vào hôm trước ngày khẩu phần mới;
-bắt đầu cùng ngày / sau thì chuyển `Expired`. Khẩu phần mới bắt đầu trong tương lai thì khẩu phần hiện tại vẫn dùng tới hôm đó.
+When a new diet plan is approved: an overlapping old plan that started earlier ends on the day before the new plan's start date;
+one that starts on the same day / later becomes `Expired`. If the new plan starts in the future, the current plan stays in use until that day.
 
 ```json
 {"DietPlanID": 1, "HorseID": 1, "HorseName": "Thunder", "CreatedByHeadTrainerID": 2, "CreatedByName": "Demo Head Trainer",
- "ReviewedByVetID": 3, "ReviewedByName": "Demo Veterinarian", "DietDescription": "Khẩu phần hồi phục",
+ "ReviewedByVetID": 3, "ReviewedByName": "Demo Veterinarian", "DietDescription": "Recovery diet",
  "StartDate": "2026-10-12", "EndDate": null, "Status": "Approved", "VetNote": null,
  "CreatedAt": "2026-10-10T08:00:00", "ApprovedAt": "2026-10-10T10:00:00",
- "Meals": [{"DietMealID": 1, "MealTime": "06:00:00", "FeedType": "Yến mạch", "Quantity": 3.0, "Unit": "kg", "Note": null}]}
+ "Meals": [{"DietMealID": 1, "MealTime": "06:00:00", "FeedType": "Oats", "Quantity": 3.0, "Unit": "kg", "Note": null}]}
 ```
 
-Mã lỗi riêng: `SELF_APPROVAL`.
+Specific error codes: `SELF_APPROVAL`.
 
-### 7.2 Việc chăm sóc
+### 7.2 Care tasks
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Who uses it | Notes |
 |---|---|---|---|
-| GET | `/care-tasks?Date=&From=&To=&HorseID=&GroomID=&Status=&mine=1` | nhân sự | `mine=1`: việc của Groom đang đăng nhập |
-| GET | `/care-tasks/{id}` | nhân sự | |
-| POST | `/care-tasks` | Head Trainer, Manager (giao việc); Groom (tự tạo) | `{"HorseID", "GroomID", "TaskType", "ScheduledAt", "Note"?}` – Groom tự tạo thì bỏ `GroomID` |
-| PATCH | `/care-tasks/{id}` | người giao / Groom tự tạo | khi `Pending`; đổi `GroomID` chỉ Head Trainer / Manager |
-| POST | `/care-tasks/{id}/complete` | Groom được giao | `{"Note"?}` → `Completed` |
-| POST | `/care-tasks/{id}/skip` | Groom, người giao | `{"Reason"}` → `Skipped` |
+| GET | `/care-tasks?Date=&From=&To=&HorseID=&GroomID=&Status=&mine=1` | staff | `mine=1`: tasks of the logged-in Groom |
+| GET | `/care-tasks/{id}` | staff | |
+| POST | `/care-tasks` | Head Trainer, Manager (assign); Groom (self-created) | `{"HorseID", "GroomID", "TaskType", "ScheduledAt", "Note"?}` – a Groom creating their own task omits `GroomID` |
+| PATCH | `/care-tasks/{id}` | assigner / Groom who created it | when `Pending`; only Head Trainer / Manager can change `GroomID` |
+| POST | `/care-tasks/{id}/complete` | assigned Groom | `{"Note"?}` → `Completed` |
+| POST | `/care-tasks/{id}/skip` | Groom, assigner | `{"Reason"}` → `Skipped` |
 
-`TaskType`: `Feeding`, `Cleaning`, `Bathing`, `Ice Leg Soak`. `AssignedBy = null` nghĩa là Groom tự tạo.
-Thấy ngựa bất thường khi chăm sóc → báo qua mục 6.1.
+`TaskType`: `Feeding`, `Cleaning`, `Bathing`, `Ice Leg Soak`. `AssignedBy = null` means the Groom created the task themselves.
+If the horse looks abnormal during care → report it via section 6.1.
 
 ```json
 {"CareTaskID": 1, "HorseID": 1, "HorseName": "Thunder", "GroomID": 7, "GroomName": "Demo Groom", "AssignedBy": 2,
  "AssignedByName": "Demo Head Trainer", "TaskType": "Ice Leg Soak", "ScheduledAt": "2026-10-12T15:00:00",
- "Status": "Pending", "CompletedAt": null, "Note": "20 phút"}
+ "Status": "Pending", "CompletedAt": null, "Note": "20 minutes"}
 ```
 
-Mã lỗi riêng: `NOT_TASK_OWNER`, `NOT_TASK_GROOM`.
+Specific error codes: `NOT_TASK_OWNER`, `NOT_TASK_GROOM`.
 
-### 7.3 Kho vật tư
+### 7.3 Inventory
 
-| Method | URL | Ai dùng | Ghi chú |
+| Method | URL | Who uses it | Notes |
 |---|---|---|---|
 | GET | `/inventory-items?ItemType=&Status=&LowStock=1` | Manager, Groom, Head Trainer | |
 | POST | `/inventory-items` | Manager | `{"ItemName", "ItemType", "Unit", "Quantity"?, "MinimumQuantity"?}` |
-| PATCH | `/inventory-items/{id}` | Manager | `ItemName`, `ItemType`, `Unit`, `MinimumQuantity`; `"Status": "Inactive"` để ngưng dùng, `"Reactivate": true` để dùng lại |
-| POST | `/inventory-items/{id}/stock` | Manager | `{"Change": 50, "Note"?}` – nhập kho (số dương) / điều chỉnh giảm (số âm) |
-| GET | `/inventory-requests?Status=&mine=1` | Manager (cả CLB), Groom / Head Trainer (của mình) | |
+| PATCH | `/inventory-items/{id}` | Manager | `ItemName`, `ItemType`, `Unit`, `MinimumQuantity`; `"Status": "Inactive"` to discontinue, `"Reactivate": true` to reactivate |
+| POST | `/inventory-items/{id}/stock` | Manager | `{"Change": 50, "Note"?}` – stock in (positive number) / adjust down (negative number) |
+| GET | `/inventory-requests?Status=&mine=1` | Manager (whole club), Groom / Head Trainer (their own) | |
 | POST | `/inventory-requests` | Groom, Head Trainer | `{"Reason"?, "Items": [{"InventoryItemID", "RequestedQuantity", "Note"?}]}` |
-| POST | `/inventory-requests/{id}/approve` | Manager | `{"Items"?: [{"InventoryItemID", "ApprovedQuantity"}]}` – bỏ trống = duyệt đủ; trừ kho |
+| POST | `/inventory-requests/{id}/approve` | Manager | `{"Items"?: [{"InventoryItemID", "ApprovedQuantity"}]}` – empty = approve in full; deducts stock |
 | POST | `/inventory-requests/{id}/reject` | Manager | `{"Note"}` |
-| POST | `/inventory-requests/{id}/cancel` | người gửi | khi còn `Pending` |
+| POST | `/inventory-requests/{id}/cancel` | requester | while still `Pending` |
 
 - `ItemType`: `Food`, `Medicine`, `Care Equipment`.
-- `Status` vật tư tự tính: `Out of Stock` (hết), `Low Stock` (≤ `MinimumQuantity`), `Available`; `Inactive` do Manager đặt.
-- Bảng `InventoryRequest` không có cột ghi chú của Manager: lý do từ chối trả về ở `RejectNote` (lấy từ Audit Log).
-  `ApprovedBy` / `ApprovedAt` là người / lúc xử lý (duyệt hoặc từ chối).
-- Kho không có bảng lịch sử nhập xuất; mọi lần nhập kho / xuất kho ghi trong Audit Log.
+- Inventory item `Status` is computed automatically: `Out of Stock` (none left), `Low Stock` (≤ `MinimumQuantity`), `Available`; `Inactive` is set by the Manager.
+- The `InventoryRequest` table has no Manager note column: the rejection reason is returned in `RejectNote` (taken from the Audit Log).
+  `ApprovedBy` / `ApprovedAt` are the person / time that processed the request (approved or rejected).
+- Inventory has no stock-movement history table; every stock in / stock out is recorded in the Audit Log.
 
 ```json
 {"InventoryRequestID": 1, "ClubID": 1, "RequestedBy": 7, "RequestedByName": "Demo Groom", "ApprovedBy": 1,
- "ApprovedByName": "Demo Club Manager", "RequestDate": "2026-10-12T08:00:00", "Status": "Approved", "Reason": "Hết cám",
+ "ApprovedByName": "Demo Club Manager", "RequestDate": "2026-10-12T08:00:00", "Status": "Approved", "Reason": "Out of bran",
  "ApprovedAt": "2026-10-12T09:00:00", "RejectNote": null,
- "Items": [{"InventoryRequestItemID": 1, "InventoryItemID": 1, "ItemName": "Cám viên", "Unit": "kg",
+ "Items": [{"InventoryRequestItemID": 1, "InventoryItemID": 1, "ItemName": "Bran pellets", "Unit": "kg",
             "RequestedQuantity": 20.0, "ApprovedQuantity": 20.0, "Note": null}]}
 ```
 
-Mã lỗi riêng: `INSUFFICIENT_STOCK`, `NOT_REQUESTER`.
+Specific error codes: `INSUFFICIENT_STOCK`, `NOT_REQUESTER`.
 
-## 8. Thông báo
+## 8. Notifications
 
-`GET /notifications` – việc cần chú ý của người đang đăng nhập. Database không có bảng thông báo nên danh sách được
-**tính lại mỗi lần gọi** từ dữ liệu hiện tại (không có "đã đọc"). Frontend gọi khi mở trang hoặc mỗi 1–2 phút để hiện chuông.
+`GET /notifications` – items needing the logged-in user's attention. The database has no notifications table, so the list is
+**recomputed on every call** from current data (there is no "read" state). The frontend calls it on page load or every 1–2 minutes to show the bell.
 
 ```json
-[{"Type": "HEALTH_REPORT", "Priority": "High", "Title": "Báo cáo sức khỏe (Urgent) - Reported",
-  "Message": "Demo Work Rider: Ngựa què chân sau phải khi phi", "EntityName": "HealthReport", "EntityID": 4,
+[{"Type": "HEALTH_REPORT", "Priority": "High", "Title": "Health report (Urgent) - Reported",
+  "Message": "Demo Work Rider: Horse lame in the right hind leg when cantering", "EntityName": "HealthReport", "EntityID": 4,
   "HorseID": 1, "HorseName": "Thunder", "At": "2026-10-12T06:20:00"}]
 ```
 
-Sắp xếp: `Priority = High` trước, mới trước. `EntityName` + `EntityID` cho biết bấm vào thì mở màn nào.
+Sorting: `Priority = High` first, newest first. `EntityName` + `EntityID` tell which screen to open when clicked.
 
-| Vai trò | `Type` |
+| Role | `Type` |
 |---|---|
 | Club Manager | `HORSE_TO_VERIFY`, `HORSE_TO_APPROVE`, `PROFILE_CHANGE`, `INVENTORY_REQUEST`, `LOW_STOCK` |
 | Vet | `HEALTH_REPORT`, `INITIAL_EXAM`, `VACCINATION_DUE`, `MEDICAL_SCHEDULE`, `DRAFT_RECORD`, `DIET_TO_REVIEW` |
-| Head Trainer | `HEALTH_REPORT` (mọi ngựa trong CLB), `PLAN_TO_APPROVE`, `ADJUSTMENT_REQUIRED`, `DIET_RETURNED` |
-| Trainer | `HEALTH_REPORT` (ngựa mình phụ trách), `PLAN_RETURNED`, `SUPERVISE_TODAY`, `SUBSTITUTE_OBSERVATION`, `SESSION_TO_REVIEW` |
+| Head Trainer | `HEALTH_REPORT` (all horses in the club), `PLAN_TO_APPROVE`, `ADJUSTMENT_REQUIRED`, `DIET_RETURNED` |
+| Trainer | `HEALTH_REPORT` (horses they are in charge of), `PLAN_RETURNED`, `SUPERVISE_TODAY`, `SUBSTITUTE_OBSERVATION`, `SESSION_TO_REVIEW` |
 | Work Rider | `RIDE_TODAY` |
 | Groom | `CARE_TASK` |
 | Horse Owner | `HORSE_REJECTED`, `PROFILE_CHANGE_DONE` |
 
-## 9. Frontend cần sửa gì (Flow 1)
+## 9. Frontend changes (Flow 1)
 
-Code mẫu đã kiểm tra kiểu (TypeScript strict) nằm trong `docs/frontend/`. Chép vào `equi-fe`:
+### 9.0 Connect the frontend to the backend (do this first)
 
-| File mẫu | Chép vào | Việc |
+| # | Task | Reason |
 |---|---|---|
-| `docs/frontend/types.ts` | `src/types/index.ts` | kiểu dữ liệu mới theo tên cột DB |
-| `docs/frontend/apiClient.ts` | `src/api/apiClient.ts` | gắn JWT, tự refresh token, đọc lỗi `detail`/`code`, thêm `apiPatch`, `apiDelete` |
-| `docs/frontend/authApi.ts` | `src/api/authApi.ts` (mới) | đăng nhập thật thay màn chọn vai trò demo |
-| `docs/frontend/horseApi.ts` | `src/api/horseApi.ts` | mỗi nghiệp vụ một API |
-| `docs/frontend/userApi.ts` | `src/api/userApi.ts` | |
+| 1 | `vite.config.js`: change `'http://localhost:8080'` to `'http://127.0.0.1:8000'` | The Django backend runs on port 8000 (8080 was the old Java backend). Use `127.0.0.1` because on some machines `localhost` does not reach Django |
+| 2 | `src/api/apiClient.ts`: change the default base URL from MockAPI to `/api` | Call the real backend through the Vite proxy instead of MockAPI |
+| 3 | `apiClient.ts`: attach the `Authorization: Bearer <access>` header to every request | Every API (except `auth/login`, `health`) requires login; a missing token returns **401** |
+| 4 | `apiClient.ts`: on 401, call `POST /auth/refresh` with `refresh` to get a new `access`, then retry | `access` expires after 60 minutes |
+| 5 | `apiClient.ts`: on errors read `detail` (show to the user) and `code` (special handling); a 400 error is an object keyed by field | See section 1, error codes part |
+| 6 | `apiClient.ts`: add `apiPatch`, `apiDelete` | Partial updates use `PATCH`, not `PUT` of the whole horse |
+| 7 | **Login** screen (Email + Password → `POST /auth/login`), store `access` / `refresh`; remove the demo role picker `DemoPicker` | Route by `Roles`: `CLUB_MANAGER` → `/manager`, `VETERINARIAN` → `/vet`, `HORSE_OWNER` → `/owner` |
+| 8 | `src/types/index.ts`: redeclare data types using database column names | Per tables 9.2–9.6 and the JSON examples in section 4 |
 
-`.env.local` của frontend (không commit):
+To override the addresses on your own machine, create `.env.local` (do not commit it):
 
 ```
 VITE_API_BASE_URL=/api
-VITE_API_PROXY_TARGET=http://localhost:8000
+VITE_API_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
-### 9.1 Hàm trong `horseApi.ts`
+### 9.1 Functions in `horseApi.ts` (rewrite per this table)
 
-| Hàm cũ (MockAPI) | Thay bằng |
+| Old function (MockAPI) | Replace with |
 |---|---|
 | `getHorses()` | `getHorses({RegistrationStatus?, OwnerID?, search?})` → `GET /horses` |
-| `getHorseById(id)` | giữ tên → `GET /horses/{id}` |
-| `createHorse(payload)` | giữ tên, body theo tên cột + `ClubID` (Owner) hoặc `OwnerID` (Manager) |
-| `updateHorse(id, payload)` (PUT cả con ngựa) | `PATCH /horses/{id}`, chỉ gửi trường cần đổi, chỉ khi `Draft`/`Rejected` |
-| *(chưa có)* | `submitHorse`, `verifyHorse`, `rejectHorse`, `archiveHorse` |
-| `saveExaminationDraft(horseId, vet, input)` | `saveExaminationDraft(horseId, input, draftId?)` → POST lần đầu, PATCH các lần sau |
-| `finalizeExamination(horseId, vet, input)` | `finalizeExamination(horseId, input, draftId?)` → lưu rồi `POST /medical-records/{id}/sign` |
+| `getHorseById(id)` | keep the name → `GET /horses/{id}` |
+| `createHorse(payload)` | keep the name, body uses column names + `ClubID` (Owner) or `OwnerID` (Manager) |
+| `updateHorse(id, payload)` (PUT of the whole horse) | `PATCH /horses/{id}`, send only the fields to change, only when `Draft`/`Rejected` |
+| *(not yet)* | `submitHorse`, `verifyHorse`, `rejectHorse`, `archiveHorse` |
+| `saveExaminationDraft(horseId, vet, input)` | `saveExaminationDraft(horseId, input, draftId?)` → POST the first time, PATCH afterwards |
+| `finalizeExamination(horseId, vet, input)` | `finalizeExamination(horseId, input, draftId?)` → save then `POST /medical-records/{id}/sign` |
 | `completeHorseIntake(horseId, managerId)` | `completeHorseIntake(horseId, HorseCode, StallID?, ManagerNote?)` → `POST /horses/{id}/approve` |
-| `isHorseAssignedToVet(horse, user)` | **bỏ**: Vet trực, không phân công |
-| `getLatestHorse`, `putHorsePreservingData`, `toExamination` | **bỏ**: backend lo trạng thái, audit log |
-| `normalizeHorse`, `normalizeUser` | **bỏ**: dùng thẳng JSON backend |
-| *(chưa có)* | `getPendingInitialExams`, `getMedicalRecords`, `addAmendment`, `getHorseDocuments`, `addHorseDocument`, `requestProfileChange`, `getProfileChangeRequests`, `approveProfileChange`, `rejectProfileChange`, `getStalls`, `getClubs`, `getRegistrationRequests`, `getHorseAuditLogs` |
+| `isHorseAssignedToVet(horse, user)` | **remove**: Vets are on duty, not assigned |
+| `getLatestHorse`, `putHorsePreservingData`, `toExamination` | **remove**: the backend handles status and audit log |
+| `normalizeHorse`, `normalizeUser` | **remove**: use the backend JSON directly |
+| *(not yet)* | `getPendingInitialExams`, `getMedicalRecords`, `addAmendment`, `getHorseDocuments`, `addHorseDocument`, `requestProfileChange`, `getProfileChangeRequests`, `approveProfileChange`, `rejectProfileChange`, `getStalls`, `getClubs`, `getRegistrationRequests`, `getHorseAuditLogs` |
 
-### 9.2 Đổi tên trường của ngựa
+### 9.2 Horse field renames
 
-| Frontend cũ | Backend | Ghi chú |
+| Old frontend | Backend | Notes |
 |---|---|---|
-| `id` | `HorseID` | số, không phải chuỗi |
+| `id` | `HorseID` | number, not string |
 | `clubId` | `ClubID` | |
-| `code` | `HorseCode` | `null` cho tới khi `Approved` |
+| `code` | `HorseCode` | `null` until `Approved` |
 | `name` | `HorseName` | |
 | `breed`, `dateOfBirth`, `coatColor`, `microchipNumber` | `Breed`, `DateOfBirth`, `CoatColor`, `MicrochipNumber` | |
-| `sex`: `MALE`/`FEMALE`/`GELDING` | `Gender`: `Male`/`Female`/`Gelding` | thêm `SexClass` để hiển thị |
+| `sex`: `MALE`/`FEMALE`/`GELDING` | `Gender`: `Male`/`Female`/`Gelding` | plus `SexClass` for display |
 | `registrationNumber` | `PassportNumber` | |
-| `sireId`, `damId` | `SireName`, `DamName` | nhập **tên** cha mẹ, không chọn ngựa |
-| `ownerUserId` | `OwnerID` | thông tin liên hệ ở `Owner` |
-| `profileStatus` | `RegistrationStatus` | xem bảng 5.3 |
-| `healthStatus` | `CurrentHealthStatus` | xem bảng 5.4 |
+| `sireId`, `damId` | `SireName`, `DamName` | enter the parents' **names**, not select horses |
+| `ownerUserId` | `OwnerID` | contact info is in `Owner` |
+| `profileStatus` | `RegistrationStatus` | see table 5.3 |
+| `healthStatus` | `CurrentHealthStatus` | see table 5.4 |
 | `archiveReason` | `ArchiveReason` | |
 | `createdAt`, `updatedAt` | `CreatedAt`, `UpdatedAt` | |
-| `intake.assignedVetId` | **bỏ** | Vet trực |
+| `intake.assignedVetId` | **remove** | Vets are on duty |
 | `intake.completedAt`, `completedBy` | `RegistrationRequest.ReviewedAt`, `ReviewedByClubManagerID` | `GET /horses/{id}/registration-requests` |
-| `intake.handoverNotes`, `intakeNotes` | `RegistrationRequest.ManagerNote` | gửi kèm `approve` |
-| `intake.handoverDocuments` | giấy tờ loại `Handover Record` | `/horses/{id}/documents` |
-| `healthAssessment` | `HealthSummary` | chỉ có ở `GET /horses/{id}` |
+| `intake.handoverNotes`, `intakeNotes` | `RegistrationRequest.ManagerNote` | sent with `approve` |
+| `intake.handoverDocuments` | documents of type `Handover Record` | `/horses/{id}/documents` |
+| `healthAssessment` | `HealthSummary` | only in `GET /horses/{id}` |
 | `examinations[]` | `GET /horses/{id}/medical-records` | |
 | `documents[]` | `GET /horses/{id}/documents` | |
 | `correctionRequests[]` | `GET /profile-change-requests?HorseID={id}` | |
 | `auditLogs[]` | `GET /horses/{id}/audit-logs` | |
-| `ownershipHistory[]` | **bỏ** | nhóm đã chốt không lưu lịch sử sở hữu |
-| `medicalRecords[]`, `vaccinations[]` | Flow 3 (chưa làm) | |
+| `ownershipHistory[]` | **remove** | the team decided not to store ownership history |
+| `medicalRecords[]`, `vaccinations[]` | Flow 3 (not done yet) | |
 
-### 9.3 Trạng thái hồ sơ
+### 9.3 Profile status
 
-| `profileStatus` cũ | `RegistrationStatus` mới |
+| Old `profileStatus` | New `RegistrationStatus` |
 |---|---|
 | `DRAFT` | `Draft` |
-| *(chưa có)* | `Submitted` (Manager cần bấm **Xác minh**) |
-| `PENDING_EXAM` | `PendingExam` và `InitialExamSigned === false` |
-| `PENDING_COMPLETION` | `PendingExam` và `InitialExamSigned === true` (hàm `isPendingCompletion`) |
+| *(not yet)* | `Submitted` (Manager must click **Verify**) |
+| `PENDING_EXAM` | `PendingExam` and `InitialExamSigned === false` |
+| `PENDING_COMPLETION` | `PendingExam` and `InitialExamSigned === true` |
 | `RECEIVED` | `Approved` |
-| *(chưa có)* | `Rejected` |
+| *(not yet)* | `Rejected` |
 | `ARCHIVED` | `Archived` |
 
-### 9.4 Tình trạng sức khỏe
+### 9.4 Health status
 
-Database tách **sức khỏe** (`HealthStatus`) và **được tập hay không** (`TrainingEligibility`).
+The database separates **health** (`HealthStatus`) from **whether the horse may train** (`TrainingEligibility`).
 
-| `healthStatus` cũ | Mới |
+| Old `healthStatus` | New |
 |---|---|
 | `NOT_ASSESSED` | `CurrentHealthStatus: "Unknown"` |
 | `ELIGIBLE` | `HealthStatus: "Healthy"` + `TrainingEligibility: "Eligible"` |
 | `MONITORING` | `"Monitor"` |
 | `INJURED` | `"Injured"` |
 | `ISOLATION` | `"Isolated"` |
-| *(chưa có)* | `"Recovering"` |
+| *(not yet)* | `"Recovering"` |
 
-Form khám cần thêm ô chọn `TrainingEligibility`. Điều kiện duyệt cũ `healthStatus === 'ELIGIBLE'`
-đổi thành: `HealthStatus` là `Healthy`/`Monitor` **và** `TrainingEligibility !== 'Not Eligible'` (backend tự kiểm tra).
+The examination form needs an extra `TrainingEligibility` selector. The old approval condition `healthStatus === 'ELIGIBLE'`
+becomes: `HealthStatus` is `Healthy`/`Monitor` **and** `TrainingEligibility !== 'Not Eligible'` (the backend checks this itself).
 
-### 9.5 Form khám (`ExaminationInput` cũ → `MedicalRecordInput`)
+### 9.5 Examination form (old `ExaminationInput` → medical record body in section 4.4)
 
-| Cũ | Mới |
+| Old | New |
 |---|---|
 | `examinedAt` | `ExamDate` |
 | `weightKg`, `heightCm` | `WeightKg`, `HeightCm` |
@@ -854,65 +858,58 @@ Form khám cần thêm ô chọn `TrainingEligibility`. Điều kiện duyệt c
 | `healthStatus` | `HealthStatus` + `TrainingEligibility` |
 | `exerciseRestrictions` | `RestrictionNote` |
 | `followUpDate` | `FollowUpDate` |
-| `purpose` | `ExamType` (`Initial Exam` khi tiếp nhận); ghi chú thêm vào `Note` |
+| `purpose` | `ExamType` (`Initial Exam` at intake); extra notes go in `Note` |
 | `status: DRAFT/FINALIZED` | `RecordStatus: Draft/Signed` |
 
-### 9.6 Người dùng, đăng nhập
+### 9.6 Users, login
 
-| Cũ | Mới |
+| Old | New |
 |---|---|
-| màn chọn vai trò demo | màn đăng nhập → `login(Email, Password)` trong `authApi.ts` |
+| demo role picker screen | login screen → `POST /auth/login` (section 4.1) |
 | `user.id` | `UserID` |
 | `user.clubId` | `ClubID` |
-| `user.role`: `CLUB_MANAGER`/`OWNER`/`VET` | `user.Roles`: `CLUB_MANAGER`/`HORSE_OWNER`/`VETERINARIAN` (mảng) |
+| `user.role`: `CLUB_MANAGER`/`OWNER`/`VET` | `user.Roles`: `CLUB_MANAGER`/`HORSE_OWNER`/`VETERINARIAN` (array) |
 | `user.isActive` | `Status === "Active"` |
 | `fullName`, `email`, `phone`, `address`, `createdAt` | `FullName`, `Email`, `Phone`, `Address`, `CreatedAt` |
 
-### 9.7 Màn hình
+### 9.7 Screens
 
-| Route | Gọi API |
+| Route | API calls |
 |---|---|
 | `/manager/horses` | `getHorses({RegistrationStatus})` |
-| `/manager/horses/new` | `getUsers('HORSE_OWNER')` để chọn chủ, rồi `createHorse({... , OwnerID})` |
+| `/manager/horses/new` | `getUsers('HORSE_OWNER')` to pick the owner, then `createHorse({... , OwnerID})` |
 | `/horses/:id` | `getHorseById`, `getHorseDocuments`, `getRegistrationRequests` |
 | `/manager/horses/:id/intake` | `verifyHorse` / `rejectHorse` |
-| `/manager/horses/:id/post-exam` | `getHorseById` (xem `HealthSummary`), `getStalls('Available')`, `completeHorseIntake` hoặc `rejectHorse` |
-| `/owner/horses` | `getHorses()` (backend tự lọc ngựa của mình) |
+| `/manager/horses/:id/post-exam` | `getHorseById` (view `HealthSummary`), `getStalls('Available')`, `completeHorseIntake` or `rejectHorse` |
+| `/owner/horses` | `getHorses()` (the backend filters to the owner's own horses) |
 | `/owner/horses/:id` | `getHorseById`, `getHorseDocuments` |
-| `/owner/horses/:id/correction-request` | `requestProfileChange`, `addHorseDocument` (bằng chứng) |
+| `/owner/horses/:id/correction-request` | `requestProfileChange`, `addHorseDocument` (evidence) |
 | `/vet/horses-needing-exam` | `getPendingInitialExams` |
 | `/vet/horses/:id` | `getHorseById`, `getMedicalRecords` |
-| `/vet/horses/:id/examination` | `saveExaminationDraft`, `finalizeExamination` (truyền `DraftMedicalRecordID`) |
-| *(màn mới cho Manager)* | `getProfileChangeRequests({Status: 'Pending'})`, `approveProfileChange`, `rejectProfileChange` |
+| `/vet/horses/:id/examination` | `saveExaminationDraft`, `finalizeExamination` (pass `DraftMedicalRecordID`) |
+| *(new screen for Manager)* | `getProfileChangeRequests({Status: 'Pending'})`, `approveProfileChange`, `rejectProfileChange` |
 
-## 10. Frontend Flow 2–4
+## 10. Frontend for Flow 2–4
 
-Frontend hiện chưa có màn hình Flow 2–4. Khi làm, dùng các file mẫu (đã kiểm tra kiểu TypeScript strict) trong `docs/frontend/`:
+The frontend has no Flow 2–4 screens yet. When building them, add API files per sections 5–8
+(e.g. `src/api/trainingApi.ts`, `medicalApi.ts`, `careApi.ts`) in the same style as `horseApi.ts`.
 
-| File mẫu | Chép vào | Nội dung |
+Suggested screens by role:
+
+| Role | Screen | Main APIs |
 |---|---|---|
-| `types.ts` | `src/types/index.ts` | đã gồm kiểu dữ liệu của cả 4 flow |
-| `trainingApi.ts` | `src/api/trainingApi.ts` | Flow 2: chuyên môn, đánh giá, phân công, giáo án, buổi tập, dashboard |
-| `medicalApi.ts` | `src/api/medicalApi.ts` | Flow 3: báo cáo sức khỏe, Training Lock, thuốc, tiêm phòng, lịch y tế |
-| `careApi.ts` | `src/api/careApi.ts` | Flow 4: khẩu phần, việc chăm sóc, kho vật tư |
-| `notificationApi.ts` | `src/api/notificationApi.ts` | chuông thông báo |
-
-Gợi ý màn hình theo vai trò:
-
-| Vai trò | Màn hình | API chính |
-|---|---|---|
-| Head Trainer | Tổng quan ngựa (khóa tập, trainer, buổi gần nhất) | `getTrainingDashboard` |
-| Head Trainer | Đánh giá ngựa, phân công trainer | `createAssessment`, `getTrainers`, `assignTrainer`, `endAssignment` |
-| Head Trainer | Duyệt giáo án | `getTrainingPlans({Status: 'Pending Approval'})`, `approvePlan`, `returnPlan` |
-| Head Trainer | Lịch tập (xếp buổi, chọn Work Rider / Substitute) | `getSessions({From, To})`, `createSession`, `updateSession`, `getUsers('WORK_RIDER')` |
-| Head Trainer | Khẩu phần, giao việc Groom | `createDietPlan`, `createCareTask` |
-| Trainer | Ngựa phụ trách, soạn giáo án | `getAssignments({mine: true})`, `createPlan`, `addStage`, `submitPlan`, `revisePlan` |
-| Trainer | Buổi giám sát hôm nay, đánh giá buổi tập | `getSessions({mine: true, Date})`, `stopSession`, `addSubstituteObservation`, `reviewSession` |
-| Work Rider | Lịch cưỡi hôm nay, ghi kết quả | `getSessions({mine: true, Date})`, `startSession`, `recordResult` |
-| Vet | Hàng chờ báo cáo sức khỏe | `getHealthReports({open: true})`, `takeReport`, `resolveReport` |
-| Vet | Khám, kê thuốc, chốt, Training Lock | `saveExaminationDraft` (horseApi), `addTreatment`, `signRecord`, `releaseLock` |
-| Vet | Tiêm phòng, lịch y tế, duyệt khẩu phần | `getVaccinations({DueWithinDays: 14})`, `approveDietPlan` |
-| Groom | Việc hôm nay, khẩu phần, báo sự cố, xin vật tư | `getCareTasks({mine: true, Date})`, `getCurrentDiet`, `reportHealthIssue`, `createInventoryRequest` |
-| Manager | Kho vật tư, duyệt yêu cầu | `getInventoryItems`, `adjustStock`, `approveInventoryRequest` |
-| Mọi vai trò | Chuông thông báo | `getNotifications` |
+| Head Trainer | Horse overview (training lock, trainer, latest session) | `GET /training-dashboard` |
+| Head Trainer | Horse assessment, trainer assignment | `POST /horses/{id}/assessments`, `GET /trainers`, `POST /trainer-assignments`, `POST /trainer-assignments/{id}/end` |
+| Head Trainer | Approve training plans | `GET /training-plans?Status=Pending Approval`, `POST /training-plans/{id}/approve`, `.../return` |
+| Head Trainer | Training schedule (schedule sessions, pick Work Rider / Substitute) | `GET /training-sessions?From=&To=`, `POST /training-sessions`, `PATCH /training-sessions/{id}`, `GET /users?RoleCode=WORK_RIDER` |
+| Head Trainer | Diet plans, assign Groom tasks | `POST /horses/{id}/diet-plans`, `POST /care-tasks` |
+| Trainer | Assigned horses, write training plans | `GET /trainer-assignments?mine=1`, `POST /training-plans`, `.../stages`, `.../submit`, `.../revise` |
+| Trainer | Today's supervised sessions, session review | `GET /training-sessions?mine=1&Date=`, `.../stop`, `.../substitute-observation`, `.../review` |
+| Work Rider | Today's rides, record results | `GET /training-sessions?mine=1&Date=`, `.../start`, `.../result` |
+| Vet | Health report queue | `GET /health-reports?open=1`, `.../take`, `.../resolve` |
+| Vet | Examination, prescribe treatments, sign, Training Lock | `POST /horses/{id}/medical-records`, `.../treatments`, `POST /medical-records/{id}/sign`, `POST /training-locks/{id}/release` |
+| Vet | Vaccinations, medical schedule, approve diet plans | `GET /vaccinations?DueWithinDays=14`, `POST /diet-plans/{id}/approve` |
+| Groom | Today's tasks, diet plan, report incidents, request inventory | `GET /care-tasks?mine=1&Date=`, `GET /horses/{id}/current-diet`, `POST /horses/{id}/health-reports`, `POST /inventory-requests` |
+| Manager | Inventory, approve requests | `GET /inventory-items`, `POST /inventory-items/{id}/stock`, `POST /inventory-requests/{id}/approve` |
+| All roles | Notification bell | `GET /notifications` |
 
