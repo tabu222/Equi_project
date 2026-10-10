@@ -1,0 +1,20 @@
+# Secrets / per-machine config
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+.coverage
+htmlcov/
+
+# IDE / OS
+.idea/
+.vscode/
+.vs/
+.DS_Store
+Thumbs.db
