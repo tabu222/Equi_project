@@ -1,143 +1,75 @@
 # Equi backend – Racehorse Training & Management System
 
-Backend Python Django REST cho đồ án SWP391. Database SQL Server tạo bằng `sql/horse_v2.sql`.
+Python Django REST backend for the SWP391 project. The SQL Server database is created by `sql/horse_v2.sql`.
 
-- Phạm vi: đủ **4 flow** trên toàn bộ 37 bảng của `horse_v2.sql`, đăng nhập JWT, phân quyền theo bảng `Role` / `Permission`:
-  - **Flow 1 – tiếp nhận ngựa**: đăng ký, xác minh, khám đầu vào, duyệt, chuồng, sửa lý lịch, lưu trữ.
-  - **Flow 2 – huấn luyện**: đánh giá ngựa, phân công Trainer, giáo án (Head Trainer duyệt), buổi tập, Substitute Trainer, kết quả, đánh giá.
-  - **Flow 3 – y tế**: báo cáo sức khỏe, phiếu khám (nháp / chốt / đính chính), Training Lock, thuốc, tiêm phòng, lịch y tế.
-  - **Flow 4 – chăm sóc**: khẩu phần (Vet duyệt), việc chăm sóc của Groom, kho vật tư.
-  - Thông báo cho từng vai trò (`GET /api/notifications`).
-- Hợp đồng API cho frontend: [`docs/API.md`](docs/API.md). Code mẫu cho frontend: [`docs/frontend/`](docs/frontend).
+- Scope: all **4 flows** over all 37 tables of `horse_v2.sql`, JWT login, permissions from the `Role` / `Permission` tables:
+  - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
+  - **Flow 2 – Training**: horse assessment, trainer assignment, training plans (approved by the Head Trainer), training sessions, Substitute Trainer, results, reviews.
+  - **Flow 3 – Medical**: health reports, medical records (draft / signed / amendment), Training Lock, treatments, vaccinations, medical schedules.
+  - **Flow 4 – Care**: diet plans (approved by the Vet), Groom care tasks, inventory.
+  - Notifications for each role (`GET /api/notifications`).
+- API contract for the frontend: [`docs/API.md`](docs/API.md) (section 9: what the frontend needs to change).
 
-## Cấu trúc
+## Project structure
 
 ```
-config/            cấu hình Django (settings.py đọc .env)
-apps/core/         lỗi chung, kiểm tra quyền, audit log, thông báo, /api/health, lệnh seed_demo, test
-apps/accounts/     Club, Role, Permission, User, đăng nhập
-apps/horses/       Flow 1: Horse, giấy tờ, hồ sơ tiếp nhận, yêu cầu sửa lý lịch, chuồng
-apps/training/     Flow 2: chuyên môn, đánh giá, phân công, giáo án, buổi tập, kết quả, đánh giá buổi tập
-apps/medical/      Flow 3: phiếu khám, đính chính, Training Lock, thuốc, tiêm phòng, lịch y tế, báo cáo sức khỏe
-apps/care/         Flow 4: khẩu phần, việc chăm sóc, kho vật tư
-sql/horse_v2.sql   script tạo database (bản chốt)
-docs/              API.md + code mẫu frontend
+config/            Django settings
+apps/core/         shared code (errors, permissions, notifications, tests)
+apps/accounts/     users, roles, login
+apps/horses/       Flow 1 – Horse intake
+apps/training/     Flow 2 – Training
+apps/medical/      Flow 3 – Medical
+apps/care/         Flow 4 – Care
+sql/horse_v2.sql   database script
+docs/API.md        API contract
 ```
 
-Mỗi app tách: `models.py` (bảng), `serializers.py` (JSON vào / ra), `services.py` (luật nghiệp vụ), `views.py` (API), `urls.py`.
+Each app is split into: `models.py` (tables), `serializers.py` (JSON in / out), `services.py` (business rules), `views.py` (API), `urls.py`.
 
-Model đều `managed = False`: **bảng do `horse_v2.sql` tạo, Django không tạo / sửa bảng**.
-Không chạy `python manage.py migrate` / `makemigrations`.
+All models are `managed = False`: **the tables are created by `horse_v2.sql`; Django never creates or alters tables**.
+Do not run `python manage.py migrate` / `makemigrations`.
 
-## Cài đặt (Windows)
+## Setup (Windows)
 
-Cần có:
+Requirements: Python 3.12+, SQL Server + SSMS, Microsoft ODBC Driver 17 or 18 for SQL Server.
 
-1. Python 3.12 hoặc 3.13 (khi cài nhớ tick **Add python.exe to PATH**).
-2. SQL Server (Express được) + SSMS.
-3. **Microsoft ODBC Driver 18 for SQL Server** (tải từ trang Microsoft, bản x64).
-
-### Bước 1. Tạo database
-
-Mở SSMS → **File → Open → File...** → chọn `sql/horse_v2.sql` → **Execute** (F5).
-Script tạo database `RacehorseTrainingManagement` kèm 7 vai trò, 26 quyền.
-
-### Bước 2. Cài thư viện Python
-
-Mở PowerShell trong thư mục dự án:
+1. Open `sql/horse_v2.sql` in SSMS and run it (F5) to create the database.
+2. Open PowerShell in the project folder and run:
 
 ```powershell
-python -m venv .venv
+py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-Nếu PowerShell báo không cho chạy script: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` rồi chạy lại dòng Activate.
-
-### Bước 3. Tạo file `.env`
-
-```powershell
 copy .env.example .env
 ```
 
-Mở `.env`, sửa:
+If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
 
-- `DB_HOST`: giống ô **Server name** khi đăng nhập SSMS (ví dụ `localhost\SQLEXPRESS` hoặc `localhost`).
-- `DB_USER` / `DB_PASSWORD`: **để trống** nếu SSMS đăng nhập bằng *Windows Authentication*; nếu dùng tài khoản SQL (`sa`...) thì điền vào.
-- `DJANGO_SECRET_KEY`: tạo bằng `python -c "import secrets; print(secrets.token_urlsafe(50))"`.
-
-> `.env` chứa mật khẩu nên **không commit lên GitHub** (đã có trong `.gitignore`, repo đang Public).
-
-### Bước 4. Kiểm tra kết nối và tạo tài khoản demo
+3. Edit `.env` for your machine (see the comments in the file), then:
 
 ```powershell
-python manage.py check
-python manage.py seed_demo --password <mật-khẩu-dev-tự-chọn>
-```
-
-`seed_demo` tạo CLB *Equi Demo Club*, 6 chuồng, vài vật tư trong kho và một tài khoản cho mỗi vai trò
-(trainer demo có sẵn chuyên môn Flat Racing để phân công được ngay):
-`manager@equi.local`, `headtrainer@equi.local`, `trainer@equi.local`, `rider@equi.local`,
-`vet@equi.local`, `groom@equi.local`, `owner@equi.local` (cùng mật khẩu vừa nhập).
-Chạy lại nhiều lần không bị trùng; thêm `--reset-passwords` để đặt lại mật khẩu.
-
-### Bước 5. Chạy server
-
-```powershell
+python manage.py seed_demo --password <your-dev-password>
 python manage.py runserver 8000
 ```
 
-Mở <http://localhost:8000/api/health> → thấy `{"backend": "UP", "database": "UP"}` là xong.
+Check: <http://127.0.0.1:8000/api/health> → `{"backend": "UP", "database": "UP"}`.
+If it shows `"database": "DOWN"`, check `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_ODBC_DRIVER` in `.env`.
 
-## Chạy cùng frontend (`equi-fe`)
+Do not write passwords in source code or the README, and never commit `.env`.
 
-Trong thư mục frontend tạo file `.env.local`:
+Demo accounts created by `seed_demo` (all with the password you entered): `manager@equi.local`, `headtrainer@equi.local`,
+`trainer@equi.local`, `rider@equi.local`, `vet@equi.local`, `groom@equi.local`, `owner@equi.local`.
 
-```
-VITE_API_BASE_URL=/api
-VITE_API_PROXY_TARGET=http://localhost:8000
-```
+## Running the tests
 
-Rồi `npm run dev` và mở <http://localhost:5173>. Vite chuyển các request `/api/...` sang backend.
-Frontend cần đổi tên trường / trạng thái và các hàm gọi API theo [`docs/API.md` mục 5](docs/API.md#5-frontend-cần-sửa-gì).
-
-## Thử API nhanh (PowerShell)
-
-```powershell
-$login = Invoke-RestMethod -Method Post -Uri http://localhost:8000/api/auth/login `
-  -ContentType "application/json" -Body '{"Email":"manager@equi.local","Password":"<mật-khẩu-dev>"}'
-$h = @{ Authorization = "Bearer " + $login.access }
-Invoke-RestMethod -Uri http://localhost:8000/api/horses -Headers $h
-```
-
-## Chạy test
-
-Test dùng SQLite trong bộ nhớ, **không cần SQL Server**:
+78 tests, using in-memory SQLite (no SQL Server needed):
 
 ```powershell
 python manage.py test --settings=config.settings_test
 ```
 
-Có 78 test, chia theo nhóm:
+## Notes
 
-- **Luồng chính**: Flow 1–4 chạy từ đầu đến cuối, kể cả Substitute Trainer, Training Lock và kho vật tư.
-- **Quyền và cách ly dữ liệu**: phân quyền theo vai trò; dữ liệu tách riêng giữa các CLB và giữa các chủ ngựa.
-- **Khớp với `sql/horse_v2.sql`** (kiểm tra bằng cách đọc file SQL):
-  - đủ 37 bảng có model, tên cột trùng khớp, cột NOT NULL;
-  - giá trị trạng thái trùng với các CHECK;
-  - dữ liệu Role / Permission / Specialization trùng với phần seed.
-
-SQLite không có trigger / view của SQL Server. Backend tự kiểm tra lại bằng Python đúng các luật mà trigger làm
-(Training Lock chặn buổi tập / giáo án, tự hủy buổi tập khi khóa, phiếu đã chốt không sửa được), nên test vẫn có ý nghĩa;
-tuy vậy vẫn nên thử lại các thao tác chính trên SQL Server thật.
-
-## Ghi chú kỹ thuật
-
-- JSON dùng đúng tên cột database (`HorseName`, `RegistrationStatus`...): xem `DBColumnModelSerializer` trong `apps/core/serializers.py`.
-- Mật khẩu lưu ở cột `User.PasswordHash` dạng hash của Django (`pbkdf2_sha256$...`). Không nhập mật khẩu trực tiếp bằng SQL; dùng `seed_demo` hoặc API `POST /api/users`.
-- Mỗi request là một transaction (`ATOMIC_REQUESTS`): lỗi giữa chừng thì không lưu dở dang.
-- Lỗi do trigger SQL Server (`THROW 51001`–`51004`) và unique index được dịch sang câu tiếng Việt trong `apps/core/exceptions.py`
-  (mã lỗi giống hệt khi backend tự phát hiện trước, vd `TRAINING_LOCK_FULL`).
-- Bảng không có cột cho một số thông tin (lý do từ chối yêu cầu vật tư, lịch sử nhập / xuất kho, thời điểm tạo Training Lock):
-  backend lấy từ `AuditLog`, không đổi database.
-- Mọi thao tác thay đổi dữ liệu ghi vào bảng `AuditLog`.
+- Create users with `seed_demo` or `POST /api/users`, not with SQL `INSERT`
+  (passwords must be hashed by Django).
+- Every data change is logged in the `AuditLog` table.
