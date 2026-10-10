@@ -8,7 +8,7 @@ Django REST backend for the Equi project, running at http://127.0.0.1:8000.
   - **Flow 3 – Medical**: health reports, medical records (draft / signed / amendment), Training Lock, treatments, vaccinations, medical schedules.
   - **Flow 4 – Care**: diet plans (approved by the Vet), Groom care tasks, inventory.
   - Notifications for each role (`GET /api/notifications`).
-- API contract for the frontend: [`docs/API.md`](docs/API.md) (section 9: what the frontend needs to change).
+- API contract for the frontend: [`docs/API.md`](docs/API.md).
 
 ## Project structure
 
