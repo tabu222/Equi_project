@@ -1,6 +1,6 @@
 # Equi backend – Racehorse Training & Management System
 
-Python Django REST backend for the SWP391 project. The SQL Server database is created by `sql/horse_v2.sql`.
+Django REST backend for the Equi project, running at http://127.0.0.1:8000.
 
 - Scope: all **4 flows** over all 37 tables of `horse_v2.sql`, JWT login, permissions from the `Role` / `Permission` tables:
   - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
