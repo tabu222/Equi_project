@@ -118,6 +118,7 @@ USE_I18N = True
 USE_TZ = False  # cột DATETIME2 trong SQL Server lưu giờ địa phương, không có múi giờ
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
+MIGRATION_MODULES = {"auth": None, "contenttypes": None}
 
 LOGGING = {
     "version": 1,
