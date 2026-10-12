@@ -114,9 +114,9 @@ export async function getHorseById(id, { role } = {}) {
 export async function createHorse(values) {
   const payload = {
     HorseName: values.name,
-    Breed: values.breed,
-    DateOfBirth: values.dateOfBirth,
-    Gender: values.sex[0] + values.sex.slice(1).toLowerCase(),
+    Breed: values.breed || null,
+    DateOfBirth: values.dateOfBirth || null,
+    Gender: values.sex ? values.sex[0] + values.sex.slice(1).toLowerCase() : null,
     CoatColor: values.coatColor || null,
     SireName: values.sireId || null,
     DamName: values.damId || null,

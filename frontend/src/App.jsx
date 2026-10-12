@@ -7,6 +7,7 @@ import { archiveHorse, finalizeExamination, getHorseById, getHorses, getPendingI
 import LoginScreen from './components/layout/LoginScreen.jsx'
 import HorseProfile from './components/horse/HorseProfile.jsx'
 import HorseList from './pages/manager/HorseList.jsx'
+import CreateHorse from './pages/manager/CreateHorse.jsx'
 import CompleteIntake from './pages/manager/CompleteIntake.jsx'
 import OwnerHorses from './pages/owner/OwnerHorses.jsx'
 import OwnerCorrectionRequest from './pages/owner/OwnerCorrectionRequest.jsx'
@@ -76,6 +77,7 @@ function AuthenticatedApp({ currentUser, onSignOut }) {
       {loading ? <main className="page-content"><section className="panel" role="status">Đang tải dữ liệu...</section></main> : <Routes>
         <Route path="/" element={<Navigate to={home} replace />} />
         <Route path="/manager/horses" element={role === 'manager' ? <HorseList horses={horses} owners={visibleOwners} currentUser={currentUser} /> : <Navigate to={home} replace />} />
+        <Route path="/manager/horses/new" element={role === 'manager' ? <CreateHorse /> : <Navigate to={home} replace />} />
         <Route path="/manager/horses/:horseId/intake" element={role === 'manager' ? <IntakeRoute horses={horses} onArchive={archive} onComplete={complete} /> : <Navigate to={home} replace />} />
         <Route path="/owner/horses" element={role === 'owner' ? <OwnerHorses horses={horses} currentUser={currentOwner} owners={visibleOwners} /> : <Navigate to={home} replace />} />
         <Route path="/owner/horses/:horseId" element={role === 'owner' ? <ProfileRoute horses={horses} owners={visibleOwners} role="OWNER" /> : <Navigate to={home} replace />} />
