@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost } from './apiClient.js'
+import { apiGet, apiPatch, apiPost, apiDelete } from './apiClient.js'
 
 const registrationMap = {
   Draft: 'DRAFT', Submitted: 'SUBMITTED', PendingExam: 'PENDING_EXAM', Rejected: 'REJECTED',
@@ -6,7 +6,7 @@ const registrationMap = {
 }
 const healthMap = {
   Unknown: 'NOT_ASSESSED', Healthy: 'ELIGIBLE', Monitor: 'MONITORING', Injured: 'INJURED',
-  Recovering: 'MONITORING', Isolated: 'ISOLATION',
+  Recovering: 'RECOVERING', Isolated: 'ISOLATION',
 }
 
 export function normalizeHorse(record) {
@@ -15,18 +15,21 @@ export function normalizeHorse(record) {
   return {
     id: String(record.HorseID),
     clubId: String(record.ClubID ?? ''),
-    code: record.HorseCode || String(record.HorseID),
+    code: record.HorseCode || '',
     name: record.HorseName || '',
     breed: record.Breed || '',
     dateOfBirth: record.DateOfBirth || '',
     sex: String(record.Gender || '').toUpperCase(),
     coatColor: record.CoatColor || '',
+    sexClass: record.SexClass || '',
     registrationNumber: record.PassportNumber || '',
     microchipNumber: record.MicrochipNumber || '',
+    sireName: record.SireName || '',
+    damName: record.DamName || '',
     sireId: record.SireName || '',
     damId: record.DamName || '',
     ownerUserId: String(record.OwnerID ?? ''),
-    owner: record.Owner,
+    owner: record.Owner ? { ownerId: String(record.Owner.UserID), fullName: record.Owner.FullName, email: record.Owner.Email, phone: record.Owner.Phone, address: record.Owner.Address } : undefined,
     profileStatus: status === 'PENDING_EXAM' && record.InitialExamSigned ? 'PENDING_COMPLETION' : status,
     healthStatus: healthMap[record.CurrentHealthStatus] || 'NOT_ASSESSED',
     archiveReason: record.ArchiveReason || '',
@@ -48,8 +51,9 @@ export function normalizeHorse(record) {
   }
 }
 
-export async function getHorses(params = '') {
-  const records = await apiGet(`/horses${params}`)
+export async function getHorses(params = {}) {
+  const query = typeof params === 'string' ? params : new URLSearchParams(Object.entries(params).filter(([, value]) => value != null && value !== '')).toString()
+  const records = await apiGet(`/horses${query ? `?${query.replace(/^\?/, '')}` : ''}`)
   return records.map(normalizeHorse)
 }
 
@@ -57,7 +61,7 @@ export async function getPendingInitialExams() {
   const records = await apiGet('/vet/pending-initial-exams')
   return records.map((item) => normalizeHorse({
     HorseID: item.HorseID,
-    HorseCode: item.HorseID,
+    HorseCode: item.HorseCode,
     HorseName: item.HorseName,
     ClubID: item.ClubID,
     OwnerID: item.OwnerID,
@@ -72,14 +76,21 @@ export async function getPendingInitialExams() {
   }))
 }
 
-export async function getHorseById(id) {
+export async function getHorseById(id, { role } = {}) {
   const record = await apiGet(`/horses/${id}`)
   const horse = normalizeHorse(record)
   const [documents, medicalRecords] = await Promise.all([
-    apiGet(`/horses/${id}/documents`).catch(() => []),
-    apiGet(`/horses/${id}/medical-records`).catch(() => []),
+    apiGet(`/horses/${id}/documents`),
+    role === 'OWNER' ? Promise.resolve([]) : apiGet(`/horses/${id}/medical-records`),
   ])
-  horse.documents = documents
+  horse.documents = documents.map((item) => ({
+    documentId: item.DocumentID,
+    documentName: item.DocumentName,
+    documentType: item.DocumentType,
+    fileUrl: item.FileUrl,
+    isVisibleToOwner: item.IsVisibleToOwner,
+    uploadedAt: item.UploadedAt,
+  }))
   horse.examinations = medicalRecords.map((item) => ({
     id: String(item.MedicalRecordID),
     examinedAt: item.ExamDate,
@@ -94,12 +105,14 @@ export async function getHorseById(id) {
     trainingEligibility: item.TrainingEligibility || '',
     followUpDate: item.FollowUpDate,
     status: item.RecordStatus === 'Signed' ? 'FINALIZED' : 'DRAFT',
+    examType: item.ExamType,
+    note: item.Note,
   }))
   return horse
 }
 
 export async function createHorse(values) {
-  const result = await apiPost('/horses', {
+  const payload = {
     HorseName: values.name,
     Breed: values.breed,
     DateOfBirth: values.dateOfBirth,
@@ -109,8 +122,10 @@ export async function createHorse(values) {
     DamName: values.damId || null,
     MicrochipNumber: values.microchipNumber || null,
     PassportNumber: values.registrationNumber || null,
-    OwnerID: Number(values.ownerUserId),
-  })
+  }
+  if (values.ownerUserId) payload.OwnerID = Number(values.ownerUserId)
+  if (values.clubId) payload.ClubID = Number(values.clubId)
+  const result = await apiPost('/horses', payload)
   return normalizeHorse(result)
 }
 
@@ -125,12 +140,31 @@ export async function createUser(values) {
   return normalizeUser(user)
 }
 
+export async function getHorseDocuments(id) {
+  const documents = await apiGet(`/horses/${id}/documents`)
+  return documents.map((item) => ({ documentId: item.DocumentID, documentName: item.DocumentName, documentType: item.DocumentType, fileUrl: item.FileUrl, isVisibleToOwner: item.IsVisibleToOwner, uploadedAt: item.UploadedAt }))
+}
+
+export async function addHorseDocument(id, values) {
+  return apiPost(`/horses/${id}/documents`, {
+    DocumentName: values.documentName,
+    DocumentType: values.documentType,
+    FileUrl: values.fileUrl,
+    IsVisibleToOwner: Boolean(values.isVisibleToOwner),
+  })
+}
+
+export const submitHorse = (id) => apiPost(`/horses/${id}/submit`, {})
+export const verifyHorse = (id) => apiPost(`/horses/${id}/verify`, {})
+export const rejectHorse = (id, reason) => apiPost(`/horses/${id}/reject`, { Reason: reason })
+export const deleteMedicalRecord = (id) => apiDelete(`/medical-records/${id}`)
+
 export async function getProfileChangeRequests(horseId) {
   const items = await apiGet(`/profile-change-requests?HorseID=${encodeURIComponent(horseId)}`)
   return items.map((item) => {
     const changes = item.ChangedFields?.Changes || []
     const first = changes[0]
-    const fieldMap = { HorseName: 'name', Breed: 'breed', DateOfBirth: 'dateOfBirth', CoatColor: 'coatColor', Gender: 'sex' }
+    const fieldMap = { HorseName: 'name', Breed: 'breed', DateOfBirth: 'dateOfBirth', CoatColor: 'coatColor', Gender: 'sex', SireName: 'sireName', DamName: 'damName', MicrochipNumber: 'microchipNumber', PassportNumber: 'registrationNumber' }
     return {
       requestId: String(item.ProfileChangeRequestID),
       ownerId: String(item.RequestedBy),
@@ -163,7 +197,7 @@ export async function getStalls() {
 
 function medicalPayload(horse, input) {
   const healthStatus = {
-    ELIGIBLE: 'Healthy', MONITORING: 'Monitor', INJURED: 'Injured', ISOLATION: 'Isolated',
+    ELIGIBLE: 'Healthy', MONITORING: 'Monitor', RECOVERING: 'Recovering', INJURED: 'Injured', ISOLATION: 'Isolated',
   }[input.healthStatus]
   const examType = horse.profileStatus === 'PENDING_EXAM' || horse.profileStatus === 'PENDING_COMPLETION'
     ? 'Initial Exam'
@@ -182,6 +216,7 @@ function medicalPayload(horse, input) {
     TrainingEligibility: trainingEligibility,
     RestrictionNote: trainingEligibility === 'Restricted' ? input.exerciseRestrictions : undefined,
     FollowUpDate: input.followUpDate || null,
+    Note: input.note || null,
   }
 }
 
@@ -228,7 +263,7 @@ export async function archiveHorse(id, reason) {
 }
 
 export async function createProfileChangeRequest(id, field, value, reason) {
-  const fieldMap = { name: 'HorseName', breed: 'Breed', dateOfBirth: 'DateOfBirth', coatColor: 'CoatColor', sex: 'Gender' }
+  const fieldMap = { name: 'HorseName', breed: 'Breed', dateOfBirth: 'DateOfBirth', coatColor: 'CoatColor', sex: 'Gender', sireName: 'SireName', damName: 'DamName', microchipNumber: 'MicrochipNumber', registrationNumber: 'PassportNumber' }
   return apiPost(`/horses/${id}/profile-change-requests`, { Changes: { [fieldMap[field]]: value }, Reason: reason })
 }
 

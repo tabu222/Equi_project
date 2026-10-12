@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import StatusBadge from '../../components/common/StatusBadge.jsx'
 
 const healthStatuses = [
-  ['ELIGIBLE', 'Đủ điều kiện'], ['MONITORING', 'Theo dõi'], ['INJURED', 'Chấn thương'], ['ISOLATION', 'Cách ly'],
+  ['ELIGIBLE', 'Đủ điều kiện'], ['MONITORING', 'Theo dõi'], ['RECOVERING', 'Đang hồi phục'], ['INJURED', 'Chấn thương'], ['ISOLATION', 'Cách ly'],
 ]
 const eligibilityOptions = [['Eligible', 'Đủ điều kiện'], ['Restricted', 'Hạn chế'], ['Not Eligible', 'Không đủ điều kiện']]
 

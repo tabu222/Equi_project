@@ -78,13 +78,13 @@ function AuthenticatedApp({ currentUser, onSignOut }) {
         <Route path="/manager/horses" element={role === 'manager' ? <HorseList horses={horses} owners={visibleOwners} currentUser={currentUser} /> : <Navigate to={home} replace />} />
         <Route path="/manager/horses/:horseId/intake" element={role === 'manager' ? <IntakeRoute horses={horses} onArchive={archive} onComplete={complete} /> : <Navigate to={home} replace />} />
         <Route path="/owner/horses" element={role === 'owner' ? <OwnerHorses horses={horses} currentUser={currentOwner} owners={visibleOwners} /> : <Navigate to={home} replace />} />
-        <Route path="/owner/horses/:horseId" element={<ProfileRoute horses={horses} owners={visibleOwners} role="owner" />} />
+        <Route path="/owner/horses/:horseId" element={role === 'owner' ? <ProfileRoute horses={horses} owners={visibleOwners} role="OWNER" /> : <Navigate to={home} replace />} />
         <Route path="/owner/horses/:horseId/correction-request" element={role === 'owner' ? <CorrectionRoute horses={horses} currentUser={currentUser} /> : <Navigate to={home} replace />} />
-        <Route path="/owner/horses/:horseId/post-exam" element={<OwnerStatusRoute horses={horses} currentUser={currentUser} />} />
+        <Route path="/owner/horses/:horseId/post-exam" element={role === 'owner' ? <OwnerStatusRoute horses={horses} currentUser={currentUser} /> : <Navigate to={home} replace />} />
         <Route path="/vet/horses-needing-exam" element={role === 'vet' ? <HorsesNeedingExam horses={horses} currentUser={currentUser} owners={visibleOwners} /> : <Navigate to={home} replace />} />
-        <Route path="/vet/horses/:horseId" element={<ProfileRoute horses={horses} owners={visibleOwners} role="vet" />} />
+        <Route path="/vet/horses/:horseId" element={role === 'vet' ? <ProfileRoute horses={horses} owners={visibleOwners} role="VET" /> : <Navigate to={home} replace />} />
         <Route path="/vet/horses/:horseId/examination" element={role === 'vet' ? <VetExamRoute currentUser={currentUser} onSaved={reloadHorses} /> : <Navigate to={home} replace />} />
-        <Route path="/horses/:horseId" element={<ProfileRoute horses={horses} owners={visibleOwners} role={role} />} />
+        <Route path="/horses/:horseId" element={role === 'manager' ? <ProfileRoute horses={horses} owners={visibleOwners} role="MANAGER" /> : <Navigate to={home} replace />} />
         <Route path="*" element={<Navigate to={home} replace />} />
       </Routes>}
       <footer className="app-footer">EQUITRACK · Quản lý đào tạo ngựa đua</footer>
@@ -94,9 +94,16 @@ function AuthenticatedApp({ currentUser, onSignOut }) {
 
 function ProfileRoute({ horses, owners, role }) {
   const { horseId } = useParams()
-  const horse = horses.find((item) => item.id === String(horseId))
+  const [horse, setHorse] = useState(() => horses.find((item) => item.id === String(horseId)))
+  useEffect(() => {
+    let active = true
+    getHorseById(horseId, { role }).then((record) => { if (active) setHorse(record) }).catch(() => { if (active) setHorse(null) })
+    return () => { active = false }
+  }, [horseId, role])
   const owner = owners.find((item) => String(item.ownerId) === horse?.ownerUserId) || horse?.owner
-  return <main className="page-content"><Link className="breadcrumb-back-button" to={role === 'owner' ? '/owner/horses' : role === 'vet' ? '/vet/horses-needing-exam' : '/manager/horses'}>← Quay lại danh sách</Link><HorseProfile horse={horse} owner={owner} documents={horse?.documents} /></main>
+  const health = horse?.healthAssessment
+  const healthContent = health ? <div className="info-grid"><div className="info-item"><span>Kết luận khám</span><strong>{health.conclusion || '—'}</strong></div><div className="info-item"><span>Tình trạng sức khỏe</span><strong>{health.healthStatus || '—'}</strong></div><div className="info-item"><span>Khả năng tập luyện</span><strong>{health.trainingEligibility || '—'}</strong></div><div className="info-item"><span>Hạn chế</span><strong>{health.exerciseRestrictions || '—'}</strong></div><div className="info-item"><span>Tái khám</span><strong>{health.followUpDate || '—'}</strong></div><div className="info-item"><span>Ngày khám</span><strong>{health.finalizedAt || '—'}</strong></div></div> : undefined
+  return <main className="page-content"><Link className="breadcrumb-back-button" to={role === 'OWNER' ? '/owner/horses' : role === 'VET' ? '/vet/horses-needing-exam' : '/manager/horses'}>← Quay lại danh sách</Link><HorseProfile horse={horse} owner={owner} documents={horse?.documents} healthContent={healthContent} /></main>
 }
 
 function IntakeRoute({ horses, onArchive, onComplete }) {
@@ -124,7 +131,7 @@ function OwnerStatusRoute({ horses }) {
 function VetExamRoute({ currentUser, onSaved }) {
   const { horseId } = useParams()
   const [horse, setHorse] = useState(null)
-  useEffect(() => { getHorseById(horseId).then(setHorse).catch(() => setHorse(null)) }, [horseId])
+  useEffect(() => { getHorseById(horseId, { role: 'VET' }).then(setHorse).catch(() => setHorse(null)) }, [horseId])
   if (!horse) return <main className="page-content"><section className="panel">Đang tải hồ sơ khám...</section></main>
   return <VetExaminationForm horse={horse} currentUser={currentUser} owner={horse.owner} onSaveDraft={saveExaminationDraft} onFinalize={finalizeExamination} onHorseSaved={(saved) => { setHorse(saved); void onSaved() }} />
 }
@@ -132,6 +139,11 @@ function VetExamRoute({ currentUser, onSaved }) {
 function App() {
   const [currentUser, setCurrentUser] = useState(null)
   const [checkingSession, setCheckingSession] = useState(Boolean(localStorage.getItem(accessTokenKey)))
+  useEffect(() => {
+    const handleUnauthorized = () => setCurrentUser(null)
+    window.addEventListener('equi:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('equi:unauthorized', handleUnauthorized)
+  }, [])
   useEffect(() => {
     if (!localStorage.getItem(accessTokenKey)) return
     apiGet('/auth/me').then((user) => setCurrentUser(normalizeUser(user))).catch(() => { logout(); setCurrentUser(null) }).finally(() => setCheckingSession(false))
