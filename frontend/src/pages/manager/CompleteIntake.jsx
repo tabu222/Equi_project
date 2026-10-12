@@ -44,8 +44,8 @@ function CompleteIntake({ horses, horse: horseOverride, onCompleteIntake, onArch
       </form> : <p className="profile-copy">Chỉ hồ sơ có kết quả khám đầu vào đã ký mới đủ điều kiện hoàn tất tiếp nhận.</p>}
       {horse.profileStatus === 'RECEIVED' && <p className="success-message">Hồ sơ đã hoàn tất tiếp nhận.</p>}
     </section>
-    <section className="panel archive-panel" style={{ marginTop: 24 }}><h2>Lưu trữ hồ sơ</h2><p>Chuyển hồ sơ sang trạng thái không hoạt động mà không xóa lịch sử.</p>
-      {horse.profileStatus === 'ARCHIVED' ? <p>Hồ sơ này đã được lưu trữ.</p> : <form onSubmit={archive}>
+    <section className="panel archive-panel" style={{ marginTop: 24 }}><h2>Lưu trữ hồ sơ</h2><p>Chuyển hồ sơ sang trạng thái Archived và giữ nguyên lịch sử.</p>
+      {horse.profileStatus === 'ARCHIVED' ? <p>Hồ sơ này đã được lưu trữ.</p> : horse.profileStatus !== 'RECEIVED' ? <p>Chỉ hồ sơ Approved mới có thể lưu trữ.</p> : <form onSubmit={archive}>
         <label className="form-field"><span>Lý do lưu trữ</span><textarea required rows="3" maxLength={500} placeholder="Nhập lý do lưu trữ..." value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} /></label>
         <label className="check-field"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /><span>Tôi xác nhận lưu trữ hồ sơ và giữ nguyên lịch sử liên quan.</span></label>
         <button className="button archive-submit" type="submit" disabled={busy || !confirmed || !archiveReason.trim()}>{busy ? 'Đang xử lý...' : 'Lưu trữ hồ sơ'}</button>
