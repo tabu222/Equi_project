@@ -18,6 +18,7 @@ Documentation for the frontend team. Backend: Django REST, database `sql/horse_v
 | Item | Convention |
 |---|---|
 | Base URL | `http://localhost:8000/api` (the frontend calls `/api/...` through the Vite proxy) |
+| Swagger | `http://127.0.0.1:8000/api/docs` to try every API in the browser; OpenAPI schema at `/api/schema` (import into Postman) |
 | Trailing `/` | **None**: `/api/horses/5`, not `/api/horses/5/` |
 | Format | JSON for both requests and responses |
 | JSON key names | **Exactly the database column names**: `HorseID`, `HorseName`, `RegistrationStatus`... |
@@ -42,6 +43,16 @@ Documentation for the frontend team. Backend: Django REST, database `sql/horse_v
 
 The frontend shows `detail` to the user; use `code` when special handling is needed.
 
+Errors coming from the database itself are also specific (the backend usually catches them earlier):
+
+| `code` | When | Example `detail` |
+|---|---|---|
+| name of the CHECK constraint, e.g. `CK_Horse_Gender` | a value breaks a CHECK rule in `horse_v2.sql` | "Giới tính ngựa phải là Male (đực), Female (cái) hoặc Gelding (đực đã thiến)." |
+| `REQUIRED_VALUE_MISSING` | a required column would be NULL | "Thiếu dữ liệu bắt buộc: câu lạc bộ (ClubID) (bảng Horse) không được để trống." |
+| `RELATED_NOT_FOUND` / `IN_USE` | foreign key: the referenced row does not exist / the row is still used elsewhere | "Không tìm thấy dữ liệu liên quan: Owner không tồn tại (FK_Horse_Owner)." |
+| unique index name, or `DUPLICATE` | duplicate value | "Số microchip đã tồn tại ở một ngựa khác." |
+| `VALUE_TOO_LONG` | text longer than the column allows | "Tên ngựa quá dài so với giới hạn của database." |
+
 409 error `code`s (common and Flow 1; codes specific to Flow 2–4 are listed in each part):
 
 | code | Meaning |
@@ -50,6 +61,7 @@ The frontend shows `detail` to the user; use `code` when special handling is nee
 | `MISSING_FIELDS` | Submitting a profile / signing a medical record before all fields are filled in (`detail` lists the missing column names) |
 | `INITIAL_EXAM_REQUIRED` | Approving a profile before the Vet has signed the intake examination record |
 | `INITIAL_EXAM_FAILED` | Intake examination did not pass → can only reject |
+| `USER_NO_CLUB` | The Manager's account has no club (`ClubID` is empty), so it cannot create horses. Fix the account, e.g. run `seed_demo` again |
 | `DUPLICATE_HORSE_CODE` | Horse code already exists in the club |
 | `STALL_NOT_FOUND`, `STALL_NOT_AVAILABLE` | Stall does not belong to the club / is no longer available |
 | `INITIAL_EXAM_EXISTS` | This submission already has an intake examination record (it may be another Vet's draft) |
@@ -117,7 +129,7 @@ Data scope: staff only see data **within their own club**; horse owners only see
 | POST | `/auth/refresh` | everyone | `{"refresh"}` → `{access}` |
 | GET | `/auth/me` | logged in | → `User` with `Roles`, `Permissions` |
 | GET | `/users?RoleCode=HORSE_OWNER` | Manager, Head Trainer | users in the club (`RoleCode` = `TRAINER`, `WORK_RIDER`, `GROOM`... to pick people for assignments) |
-| POST | `/users` | Manager | `{"FullName", "Email", "Phone"?, "Address"?, "RoleCode"? (default HORSE_OWNER), "Password"?}` |
+| POST | `/users` | Manager | `{"FullName", "Email", "Phone", "Address", "RoleCode"? (default HORSE_OWNER), "Password"?}`; `Phone` = 10 digits starting with 0 or `+84` + 9 digits |
 | GET | `/users/{UserID}` | self / Manager of the same club | |
 | GET | `/clubs` | logged in | Active clubs (Owner picks one when registering) |
 
@@ -148,7 +160,7 @@ Example `POST /auth/login`:
 | GET | `/horses/{HorseID}` | all roles | includes `HealthSummary` |
 | POST | `/horses` | Owner, Manager | creates a `Draft` |
 | PATCH | `/horses/{HorseID}` | Owner (own horse), Manager | only when `Draft` / `Rejected`; send the fields to change |
-| POST | `/horses/{HorseID}/submit` | Owner, Manager | `Draft`/`Rejected` → `Submitted`; requires `HorseName`, `DateOfBirth`, `Gender`, `MicrochipNumber` |
+| POST | `/horses/{HorseID}/submit` | Owner, Manager | `Draft`/`Rejected` → `Submitted` |
 | POST | `/horses/{HorseID}/verify` | Manager | `Submitted` → `PendingExam` |
 | POST | `/horses/{HorseID}/reject` | Manager | `{"Reason"}`; `Submitted`/`PendingExam` → `Rejected` |
 | POST | `/horses/{HorseID}/approve` | Manager | `{"HorseCode", "StallID"?, "ManagerNote"?}`; `PendingExam` → `Approved` |
@@ -168,6 +180,18 @@ Body of `POST /horses`:
 }
 ```
 
+**All profile fields are required** (no `null` / empty string), on `POST /horses` and when changed with `PATCH`
+or a profile change request. A 400 error names the exact field and the reason:
+
+| Field | Rule | Example error (`detail` in Vietnamese) |
+|---|---|---|
+| `HorseName`, `Breed`, `CoatColor`, `SireName`, `DamName` | not empty | `{"Breed": ["Cần nhập giống ngựa (Breed)."]}` |
+| `DateOfBirth` | `YYYY-MM-DD`, not in the future, not older than 40 years | `{"DateOfBirth": ["Ngày sinh không được ở tương lai."]}` |
+| `Gender` | `Male`, `Female` or `Gelding` | `{"Gender": ["Giới tính phải là Male (đực), Female (cái) hoặc Gelding (đực đã thiến)."]}` |
+| `MicrochipNumber` | exactly **15 digits** (ISO 11784/11785; the first 3 digits are the country or manufacturer code), spaces are removed; unique | `{"MicrochipNumber": ["Số microchip phải gồm đúng 15 chữ số ..."]}` |
+| `PassportNumber` | letters, digits, `-` or `/`, 5–50 characters, saved in upper case; unique | `{"PassportNumber": ["Số hộ chiếu / đăng ký đã được dùng cho một ngựa khác."]}` |
+| `SireName`, `DamName` | different from the horse's own name and from each other | `{"SireName": ["Tên ngựa cha không được trùng tên chính con ngựa này."]}` |
+
 - **Owner registers themselves**: send `ClubID`; `OwnerID` = themselves.
 - **Manager enters on the owner's behalf**: send `OwnerID` (a `HORSE_OWNER` account); `ClubID` = the Manager's club.
 
@@ -185,7 +209,8 @@ Returned horse (`GET /horses/1`):
   "CreatedAt": "2026-10-10T08:00:00", "UpdatedAt": "2026-10-10T10:00:00",
   "SexClass": "Stallion",
   "InitialExamSigned": true,
-  "Owner": {"UserID": 5, "FullName": "Nguyen Van A", "Email": "a@example.com", "Phone": null, "Address": null},
+  "Owner": {"UserID": 5, "FullName": "Hoàng Gia Huy", "Email": "owner@equi.local", "Phone": "0918034567",
+            "Address": "86 Nguyễn Văn Trỗi, Phường 8, Quận Phú Nhuận, TP. Hồ Chí Minh"},
   "CurrentStall": {"StallID": 1, "StallNumber": "A01", "StartDate": "2026-10-10"},
   "HealthSummary": {
     "MedicalRecordID": 1, "ExamDate": "2026-10-10T09:30:00", "ExamType": "Initial Exam",

@@ -55,14 +55,21 @@ python manage.py runserver 8000
 Check: <http://127.0.0.1:8000/api/health> → `{"backend": "UP", "database": "UP"}`.
 If it shows `"database": "DOWN"`, check `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_ODBC_DRIVER` in `.env`.
 
+Test the API in the browser with **Swagger**: open <http://127.0.0.1:8000/api/docs>,
+call `POST /api/auth/login` (Try it out), copy the `access` token, click **Authorize** and paste it.
+After that every API can be called from the page. Postman also works: import <http://127.0.0.1:8000/api/schema>.
+
 Do not write passwords in source code or the README, and never commit `.env`.
 
 Demo accounts created by `seed_demo` (all with the password you entered): `manager@equi.local`, `headtrainer@equi.local`,
 `trainer@equi.local`, `rider@equi.local`, `vet@equi.local`, `groom@equi.local`, `owner@equi.local`.
+It also creates 6 sample horses for `owner@equi.local` (3 Approved, 1 PendingExam, 1 Submitted, 1 Draft).
+All accounts have a real name, phone number and address; every horse has a full profile (no empty fields).
+Running it again is safe: nothing is duplicated, and old accounts get their missing club / phone / address and real names.
 
 ## Running the tests
 
-78 tests, using in-memory SQLite (no SQL Server needed):
+86 tests, using in-memory SQLite (no SQL Server needed):
 
 ```powershell
 python manage.py test --settings=config.settings_test

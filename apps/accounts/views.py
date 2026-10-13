@@ -2,6 +2,7 @@ import secrets
 
 from django.contrib.auth import authenticate
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -29,6 +30,7 @@ class LoginView(APIView):
     def get_authenticate_header(self, request):
         return 'Bearer realm="api"'  # để sai mật khẩu trả 401 (không phải 403)
 
+    @extend_schema(request=LoginSerializer, auth=[], summary="Đăng nhập, lấy access / refresh token")
     def post(self, request):
         data = LoginSerializer(data=request.data)
         data.is_valid(raise_exception=True)

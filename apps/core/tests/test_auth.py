@@ -1,4 +1,4 @@
-from rest_framework.test import APIClient
+from rest_framework.test import APIClient, APITestCase
 
 from .helpers import TEST_PASSWORD, Flow1TestCase
 
@@ -73,3 +73,11 @@ class SeedDemoTests(Flow1TestCase):
                                format="json")
         self.assertEqual(res.status_code, 200, res.data)
         self.assertEqual(res.data["User"]["Roles"], ["VETERINARIAN"])
+
+
+class SwaggerTests(APITestCase):
+    def test_swagger_page_and_schema_are_public(self):
+        self.assertEqual(self.client.get("/api/docs").status_code, 200)
+        res = self.client.get("/api/schema")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"/api/auth/login", res.content)

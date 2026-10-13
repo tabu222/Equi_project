@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "rest_framework",
     "corsheaders",
+    "drf_spectacular",
     "apps.core",
     "apps.accounts",
     "apps.horses",
@@ -97,7 +98,27 @@ REST_FRAMEWORK = {
     "COERCE_DECIMAL_TO_STRING": False,  # cân nặng trả về dạng số 480.5, không phải chuỗi "480.5"
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S",
     "UNAUTHENTICATED_USER": "django.contrib.auth.models.AnonymousUser",
+    "DEFAULT_SCHEMA_CLASS": "apps.core.schema.EquiAutoSchema",
 }
+
+# Swagger để test API trên trình duyệt: http://127.0.0.1:8000/api/docs
+# (bấm Authorize, dán access token lấy từ POST /api/auth/login)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Equi API",
+    "DESCRIPTION": "Backend Django REST cho đồ án SWP391. Chi tiết từng API: docs/API.md.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SWAGGER_UI_SETTINGS": {"persistAuthorization": True},
+    "DISABLE_ERRORS_AND_WARNINGS": True,
+}
+
+TEMPLATES = [  # chỉ dùng cho trang Swagger
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "OPTIONS": {"context_processors": ["django.template.context_processors.request"]},
+    },
+]
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MINUTES", "60"))),
