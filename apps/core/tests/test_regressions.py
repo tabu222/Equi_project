@@ -1,5 +1,12 @@
 """Các lỗi đã tìm thấy khi rà soát; giữ test để không bị lặp lại."""
+import re
 from datetime import timedelta
+from pathlib import Path
+
+from django.conf import settings
+from django.test import TestCase
+
+from apps.core.exceptions import CHECK_MESSAGES, friendly_db_error
 
 from apps.care.models import DietPlan
 from apps.medical.models import HealthReport
@@ -100,3 +107,31 @@ class RegressionTests(TrainingTestCase):
         for url in ("/api/training-reviews?Days=abc", "/api/training-sessions?HorseID=abc",
                     "/api/vaccinations?DueWithinDays=x", "/api/horses?OwnerID=x", "/api/care-tasks?From=2026-13-01"):
             self.assertEqual(head.get(url).status_code, 400, url)
+
+
+class DatabaseErrorMessageTests(TestCase):
+    """Lỗi từ database phải báo cụ thể, không chỉ một câu chung chung."""
+
+    def test_every_check_constraint_has_a_message(self):
+        sql = (Path(settings.BASE_DIR) / "sql" / "horse_v2.sql").read_text(encoding="utf-8")
+        names = set(re.findall(r"CONSTRAINT (CK_\w+) CHECK", sql))
+        self.assertTrue(names)
+        self.assertEqual(names - set(CHECK_MESSAGES), set())
+
+    def test_sql_server_messages(self):
+        cases = {
+            'The INSERT statement conflicted with the CHECK constraint "CK_Horse_Gender". The conflict occurred':
+                "CK_Horse_Gender",
+            "Cannot insert the value NULL into column 'ClubID', table 'Db.dbo.Horse'; column does not allow nulls.":
+                "REQUIRED_VALUE_MISSING",
+            'The INSERT statement conflicted with the FOREIGN KEY constraint "FK_Horse_Owner".': "RELATED_NOT_FOUND",
+            'The DELETE statement conflicted with the REFERENCE constraint "FK_Horse_Owner".': "IN_USE",
+            "String or binary data would be truncated in table 'Db.dbo.Horse', column 'HorseName'.": "VALUE_TOO_LONG",
+            "Cannot insert duplicate key row in object 'dbo.Horse' with unique index 'UX_Horse_MicrochipNumber'.":
+                "UX_Horse_MicrochipNumber",
+        }
+        for text, code in cases.items():
+            message, got = friendly_db_error(Exception(text))
+            self.assertEqual(got, code, text)
+            self.assertNotIn("vi phạm ràng buộc của database", message)
+        self.assertIn("ClubID", friendly_db_error(Exception(list(cases)[1]))[0])

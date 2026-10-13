@@ -194,6 +194,10 @@ def create_change_request(horse, user, changes: dict, reason: str, evidence_docu
         raise BusinessRuleError("Chưa có trường nào cần sửa.", "NO_CHANGES")
     if evidence_document_id and not horse.documents.filter(pk=evidence_document_id).exists():
         raise BusinessRuleError("Tài liệu bằng chứng không thuộc ngựa này.", "EVIDENCE_NOT_FOUND")
+    # kiểm tra giá trị mới ngay khi gửi (sai định dạng microchip, trùng hộ chiếu...) thay vì đợi lúc duyệt
+    from .serializers import HorseWriteSerializer
+
+    HorseWriteSerializer(horse, data=changes, partial=True).is_valid(raise_exception=True)
 
     items = []
     for column, new_value in changes.items():

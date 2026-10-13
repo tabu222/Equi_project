@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import Club, User
 from apps.core.audit import log_action
+from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog
 from apps.core.params import int_param
 from apps.core.permissions import HasAnyPermission, user_has_any
@@ -109,6 +110,10 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             owner = User.objects.filter(pk=owner_id, roles__code="HORSE_OWNER").first()
             if owner is None:
                 raise ValidationError({"OwnerID": ["Không tìm thấy chủ ngựa với OwnerID này."]})
+            if not user.club_id:
+                raise BusinessRuleError(
+                    "Tài khoản của bạn chưa thuộc câu lạc bộ nào (ClubID trống) nên chưa tạo được ngựa.", "USER_NO_CLUB"
+                )
             club_id = user.club_id
         else:
             # Owner tự đăng ký vào một CLB đang hoạt động

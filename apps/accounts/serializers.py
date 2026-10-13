@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from apps.core.serializers import DBColumnModelSerializer
@@ -37,13 +39,18 @@ class LoginSerializer(serializers.Serializer):
     Password = serializers.CharField(trim_whitespace=False)
 
 
+PHONE_RE = re.compile(r"^(0\d{9}|\+84\d{9})$")
+
+
 class UserCreateSerializer(serializers.Serializer):
     """Manager tạo tài khoản trong CLB của mình (mặc định là chủ ngựa)."""
 
     FullName = serializers.CharField(max_length=150)
     Email = serializers.EmailField(max_length=100)
-    Phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
-    Address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    Phone = serializers.CharField(max_length=20, error_messages={
+        "required": "Cần nhập số điện thoại (Phone).", "blank": "Cần nhập số điện thoại (Phone)."})
+    Address = serializers.CharField(max_length=255, error_messages={
+        "required": "Cần nhập địa chỉ (Address).", "blank": "Cần nhập địa chỉ (Address)."})
     RoleCode = serializers.CharField(required=False, default="HORSE_OWNER")
     Password = serializers.CharField(required=False, allow_blank=True, min_length=6, trim_whitespace=False)
 
@@ -51,6 +58,14 @@ class UserCreateSerializer(serializers.Serializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("Email đã được sử dụng.")
         return value.lower()
+
+    def validate_Phone(self, value):
+        phone = value.replace(" ", "").replace(".", "")
+        if not PHONE_RE.match(phone):
+            raise serializers.ValidationError(
+                "Số điện thoại không hợp lệ: 10 số bắt đầu bằng 0 (vd 0901234567) hoặc dạng +84 (vd +84901234567)."
+            )
+        return phone
 
     def validate_RoleCode(self, value):
         if not Role.objects.filter(code=value).exists():

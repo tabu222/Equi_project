@@ -52,6 +52,8 @@ class Flow1TestCase(APITestCase):
             "CoatColor": "Bay", "Gender": "Male", "SireName": "Storm King", "DamName": "Lady Rain",
             "MicrochipNumber": "985000000000001", "PassportNumber": "VN-001",
         }
+        if extra.get("MicrochipNumber") and "PassportNumber" not in extra:
+            extra["PassportNumber"] = f"VN-{extra['MicrochipNumber'][-6:]}"  # hộ chiếu không được trùng
         payload.update(extra)
         return payload
 

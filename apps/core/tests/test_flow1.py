@@ -145,18 +145,58 @@ class SexClassTests(Flow1TestCase):
 
 
 class RuleTests(Flow1TestCase):
-    def test_submit_requires_core_fields(self):
-        horse_id = self.owner_creates_horse(MicrochipNumber=None)
-        res = self.client_for(self.owner).post(f"/api/horses/{horse_id}/submit")
-        self.assertEqual(res.status_code, 409)
-        self.assertEqual(res.data["code"], "MISSING_FIELDS")
-        self.assertIn("MicrochipNumber", res.data["detail"])
+    def test_all_profile_fields_required(self):
+        owner = self.client_for(self.owner)
+        for column in ("Breed", "DateOfBirth", "CoatColor", "Gender", "SireName", "DamName",
+                       "MicrochipNumber", "PassportNumber"):
+            for empty in (None, ""):
+                res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, **{column: empty}),
+                                 format="json")
+                self.assertEqual(res.status_code, 400, (column, empty))
+                self.assertIn(column, res.data)
+        payload = self.horse_payload(ClubID=self.club.id)
+        del payload["Breed"]
+        res = owner.post("/api/horses", payload, format="json")
+        self.assertEqual(res.data["Breed"], ["Cần nhập giống ngựa (Breed)."])
+        horse_id = self.owner_creates_horse()
+        res = owner.patch(f"/api/horses/{horse_id}", {"PassportNumber": None}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_microchip_and_passport_format(self):
+        owner = self.client_for(self.owner)
+        for bad in ("abc", "98500000000000", "9850000000000011", "98500000000000A"):
+            res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, MicrochipNumber=bad,
+                                                               PassportNumber="VN-777"), format="json")
+            self.assertEqual(res.status_code, 400, bad)
+            self.assertIn("15 chữ số", res.data["MicrochipNumber"][0])
+        for bad in ("abc", "VN 001", "VN_0001", "#12345"):
+            res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, PassportNumber=bad),
+                             format="json")
+            self.assertEqual(res.status_code, 400, bad)
+            self.assertIn("PassportNumber", res.data)
+        res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, MicrochipNumber="985 000 000 000 009",
+                                                           PassportNumber="vn-tb-2021/9"), format="json")
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual((res.data["MicrochipNumber"], res.data["PassportNumber"]), ("985000000000009", "VN-TB-2021/9"))
+        res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, MicrochipNumber="985000000000010",
+                                                           PassportNumber="VN-TB-2021/9"), format="json")
+        self.assertEqual(res.data["PassportNumber"], ["Số hộ chiếu / đăng ký đã được dùng cho một ngựa khác."])
+
+    def test_pedigree_rules(self):
+        owner = self.client_for(self.owner)
+        res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, SireName="thunder"), format="json")
+        self.assertIn("SireName", res.data)
+        res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, DamName="Storm King"), format="json")
+        self.assertIn("DamName", res.data)
+        res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, DateOfBirth="1970-01-01"),
+                         format="json")
+        self.assertIn("DateOfBirth", res.data)
 
     def test_invalid_values(self):
         owner = self.client_for(self.owner)
         res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, Gender="Unknown"), format="json")
         self.assertEqual(res.status_code, 400)
-        self.assertIn("Gender", res.data)
+        self.assertEqual(res.data["Gender"], ["Giới tính phải là Male (đực), Female (cái) hoặc Gelding (đực đã thiến)."])
         res = owner.post("/api/horses", self.horse_payload(ClubID=self.club.id, DateOfBirth="2999-01-01"),
                          format="json")
         self.assertIn("DateOfBirth", res.data)
