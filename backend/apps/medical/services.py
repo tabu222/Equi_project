@@ -177,6 +177,10 @@ def sign_record(record, user, lock_values=None):
         "TrainingEligibility": record.training_eligibility,
     })
 
+    if record.exam_type == MedicalRecord.ExamType.INITIAL:
+        from apps.core import emails
+        emails.initial_exam_signed(record)
+
     lock = None
     if horse.registration_status == Horse.RegistrationStatus.APPROVED:
         current = active_lock(horse)

@@ -3,9 +3,9 @@ Tạo dữ liệu demo để chạy thử frontend:  python manage.py seed_demo 
 
 - Bổ sung Role / Permission / RolePermission nếu thiếu (horse_v2.sql thường đã có sẵn).
 - Bổ sung danh mục chuyên môn (Specialization) nếu thiếu.
-- Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng, vài vật tư trong kho và 1 tài khoản cho mỗi vai trò (email @equi.local,
-  họ tên người thật, có số điện thoại và địa chỉ);
-  trainer mẫu có chuyên môn Flat Racing để Head Trainer phân công được ngay.
+- Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng, vài vật tư trong kho và 18 tài khoản (email @equi.local,
+  họ tên người thật, có số điện thoại và địa chỉ): 1 Manager, 2 Head Trainer, 3 Trainer, 3 Work Rider, 3 Vet,
+  3 Groom, 3 chủ ngựa. Mỗi trainer một chuyên môn khác nhau để Head Trainer phân công được ngay.
 - Tạo 6 ngựa mẫu của chủ ngựa mẫu, đi qua đúng luồng Flow 1 nên đủ các trạng thái để thử giao diện:
   3 ngựa Approved (có mã ngựa, chuồng, phiếu khám đầu vào), 1 PendingExam, 1 Submitted, 1 Draft.
 - Tài khoản mẫu cũ đang thiếu CLB / số điện thoại / địa chỉ được điền bổ sung; tên cũ "Demo ..." đổi sang tên mới.
@@ -24,6 +24,7 @@ from django.db import transaction
 from apps.accounts.models import Club, Role, User, UserRole
 from apps.accounts.rbac import ensure_rbac_seed
 from apps.care.models import InventoryItem
+from apps.core import emails
 from apps.horses import services as horse_services
 from apps.horses.models import Horse, Stall
 from apps.medical import services as medical_services
@@ -41,17 +42,42 @@ DEMO_USERS = [
      "45 Nguyễn Chí Thanh, Phường 9, Quận 5, TP. Hồ Chí Minh"),
     ("headtrainer@equi.local", "Lê Hoàng Phúc", "HEAD_TRAINER", "0912346870",
      "18 Lạc Long Quân, Phường 3, Quận 11, TP. Hồ Chí Minh"),
+    ("headtrainer2@equi.local", "Trương Văn Nghĩa", "HEAD_TRAINER", "0913572046",
+     "105 Âu Cơ, Phường 14, Quận Tân Bình, TP. Hồ Chí Minh"),
     ("trainer@equi.local", "Phạm Quốc Bảo", "TRAINER", "0938452116",
      "72 Hòa Hảo, Phường 4, Quận 10, TP. Hồ Chí Minh"),
+    ("trainer2@equi.local", "Huỳnh Thị Mai", "TRAINER", "0939264851",
+     "21 Tô Hiến Thành, Phường 13, Quận 10, TP. Hồ Chí Minh"),
+    ("trainer3@equi.local", "Đặng Quang Vinh", "TRAINER", "0936807193",
+     "58 Phan Xích Long, Phường 2, Quận Phú Nhuận, TP. Hồ Chí Minh"),
     ("rider@equi.local", "Võ Thanh Tùng", "WORK_RIDER", "0977215348",
      "9 Bình Thới, Phường 14, Quận 11, TP. Hồ Chí Minh"),
+    ("rider2@equi.local", "Lâm Gia Bảo", "WORK_RIDER", "0978346120",
+     "140 Minh Phụng, Phường 6, Quận 6, TP. Hồ Chí Minh"),
+    ("rider3@equi.local", "Phan Ngọc Ánh", "WORK_RIDER", "0976518243",
+     "36 Hậu Giang, Phường 2, Quận 6, TP. Hồ Chí Minh"),
     ("vet@equi.local", "Trần Thu Hà", "VETERINARIAN", "0908663192",
      "250 Lý Thường Kiệt, Phường 14, Quận 10, TP. Hồ Chí Minh"),
+    ("vet2@equi.local", "Ngô Minh Tuấn", "VETERINARIAN", "0935718264",
+     "14 Ngô Gia Tự, Phường 2, Quận 10, TP. Hồ Chí Minh"),
+    ("vet3@equi.local", "Lê Thị Thu", "VETERINARIAN", "0907123456",
+     "25 Nguyễn Văn Cừ, Phường 1, Quận 5, TP. Hồ Chí Minh"),
     ("groom@equi.local", "Đỗ Văn Lộc", "GROOM", "0962781405",
      "33 Tôn Thất Hiệp, Phường 13, Quận 11, TP. Hồ Chí Minh"),
+    ("groom2@equi.local", "Nguyễn Văn Tài", "GROOM", "0963158027",
+     "77 Ông Ích Khiêm, Phường 10, Quận 11, TP. Hồ Chí Minh"),
+    ("groom3@equi.local", "Bùi Thị Hạnh", "GROOM", "0964902317",
+     "12 Lò Siêu, Phường 16, Quận 11, TP. Hồ Chí Minh"),
     ("owner@equi.local", "Hoàng Gia Huy", "HORSE_OWNER", "0918034567",
      "86 Nguyễn Văn Trỗi, Phường 8, Quận Phú Nhuận, TP. Hồ Chí Minh"),
+    ("owner2@equi.local", "Lý Thanh Sơn", "HORSE_OWNER", "0909123456",
+     "12 Nguyễn Trãi, Phường Bến Thành, Quận 1, TP. Hồ Chí Minh"),
+    ("owner3@equi.local", "Trịnh Ngọc Diệp", "HORSE_OWNER", "0917465230",
+     "190 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP. Hồ Chí Minh"),
 ]
+# Mỗi trainer một chuyên môn (trainer không có trong danh sách thì nhận Flat Racing)
+TRAINER_SPECIALIZATIONS = {"trainer@equi.local": "FLAT_RACING", "trainer2@equi.local": "STEEPLECHASE_HURDLE",
+                           "trainer3@equi.local": "ENDURANCE"}
 DEMO_ITEMS = [("Yến mạch", "Food", "kg", 500, 100), ("Cỏ khô", "Food", "kg", 1000, 200),
               ("Băng chân", "Care Equipment", "cuộn", 40, 10), ("Thuốc sát trùng", "Medicine", "chai", 12, 5)]
 DEMO_STALLS = [("A01", "Standard"), ("A02", "Standard"), ("A03", "Standard"), ("A04", "Standard"),
@@ -96,6 +122,10 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
+        with emails.suppressed():  # dữ liệu mẫu: không gửi mail thông báo
+            self.seed(options)
+
+    def seed(self, options):
         password = options.get("password") or secrets.token_urlsafe(9)
         reset = options["reset_passwords"]
 
@@ -142,7 +172,8 @@ class Command(BaseCommand):
             if not UserRole.objects.filter(user=user, role=role).exists():
                 UserRole.objects.create(user=user, role=role)
             if role_code == "TRAINER" and not TrainerSpecialization.objects.filter(trainer=user).exists():
-                TrainerSpecialization.objects.create(trainer=user, specialization=specializations["FLAT_RACING"])
+                code = TRAINER_SPECIALIZATIONS.get(email, "FLAT_RACING")
+                TrainerSpecialization.objects.create(trainer=user, specialization=specializations[code])
             rows.append((role_code, email, state))
 
         horses = self.ensure_horses(club)
@@ -171,8 +202,8 @@ class Command(BaseCommand):
 
     def ensure_horses(self, club):
         """Tạo ngựa mẫu qua đúng các bước Flow 1. Ngựa nào đã có (cùng tên, cùng chủ) thì bỏ qua."""
-        users = {code: User.objects.get(email=email) for email, _, code, *_ in DEMO_USERS}
-        owner, manager, vet = users["HORSE_OWNER"], users["CLUB_MANAGER"], users["VETERINARIAN"]
+        users = {email: User.objects.get(email=email) for email, *_ in DEMO_USERS}
+        owner, manager, vet = users["owner@equi.local"], users["manager@equi.local"], users["vet@equi.local"]
         created = []
         for info, target, code, stall_number, weight, height in DEMO_HORSES:
             if Horse.objects.filter(owner=owner, horse_name=info["horse_name"]).exists():

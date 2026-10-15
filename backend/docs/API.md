@@ -28,8 +28,8 @@ Documentation for the frontend team. Backend: Django REST, database `sql/horse_v
 | Decimal numbers | Plain numbers: `"WeightKg": 480.5` |
 | Time | `"06:00:00"` (sending `"06:00"` also works) |
 | List filtering | Query string by column name: `?HorseID=5&Status=Pending`; on / off flags use `=1` (`?mine=1`, `?open=1`) |
-| Login | Header `Authorization: Bearer <access>` for every API (except `auth/login`, `health`) |
-| Error messages | Error `detail` messages returned by the backend are in Vietnamese (examples in this document are translated) |
+| Login | Header `Authorization: Bearer <access>` for every API (except `auth/login`, `auth/register`, `auth/google`, `clubs`, `health`) |
+| Language | Messages (error `detail`, field errors, notification titles) are **Vietnamese by default**. Send header `X-Language: en` (or `?lang=en`) to get **English**. The response header `Content-Language` says which one was used. `code`, JSON keys and status values never change. Messages without a translation stay Vietnamese (add them to `apps/core/i18n.py`) |
 
 ### Error codes
 
@@ -126,12 +126,14 @@ Data scope: staff only see data **within their own club**; horse owners only see
 |---|---|---|---|
 | GET | `/health` | no login required | → `{"backend": "UP", "database": "UP"}` (503 if the DB fails) |
 | POST | `/auth/login` | everyone | `{"Email", "Password"}` → `{access, refresh, User}` |
+| POST | `/auth/register` | no login required | Horse owner signs up: `{"FullName", "Email", "Phone", "Address", "Password" (min 6), "ClubID"}` → **201** `{access, refresh, User}` (logged in right away). Role is always `HORSE_OWNER`; max 20 sign-ups per hour per IP |
+| POST | `/auth/google` | no login required | Sign in with Google: `{"Credential": "<Google ID token>"}` → existing email: `{access, refresh, User}`; unknown email: `{"SignupRequired": true, "Email", "FullName"}`. Send again with `"Phone", "Address", "ClubID"` (and optional `"FullName"`) to create a **horse owner** account → **201** `{access, refresh, User}`. Needs `GOOGLE_CLIENT_ID` in `.env` (otherwise 409 `GOOGLE_LOGIN_DISABLED`) |
 | POST | `/auth/refresh` | everyone | `{"refresh"}` → `{access}` |
 | GET | `/auth/me` | logged in | → `User` with `Roles`, `Permissions` |
 | GET | `/users?RoleCode=HORSE_OWNER` | Manager, Head Trainer | users in the club (`RoleCode` = `TRAINER`, `WORK_RIDER`, `GROOM`... to pick people for assignments) |
 | POST | `/users` | Manager | `{"FullName", "Email", "Phone", "Address", "RoleCode"? (default HORSE_OWNER), "Password"?}`; `Phone` = 10 digits starting with 0 or `+84` + 9 digits |
 | GET | `/users/{UserID}` | self / Manager of the same club | |
-| GET | `/clubs` | logged in | Active clubs (Owner picks one when registering) |
+| GET | `/clubs` | no login required | Active clubs (picked on the sign-up form and when an Owner registers a horse) |
 
 If `POST /users` is sent without `Password`, the backend generates a temporary password and returns `TemporaryPassword` **only once**.
 
@@ -231,7 +233,9 @@ Approval conditions (`approve`): the Vet has signed the intake examination recor
 | Method | URL | Used by | Notes |
 |---|---|---|---|
 | GET | `/horses/{HorseID}/documents` | can view the horse | Owner only sees documents with `IsVisibleToOwner: true` |
-| POST | `/horses/{HorseID}/documents` | Owner (own horse), Manager | `{"DocumentName", "DocumentType", "FileUrl", "IsVisibleToOwner"?}` |
+| POST | `/horses/{HorseID}/documents` | Owner (own horse), Manager | **Upload a file**: `multipart/form-data` with `File` (PDF / JPG / PNG / WEBP, max `UPLOAD_MAX_MB` = 10 MB), `DocumentType`, `DocumentName`? (default = file name), `IsVisibleToOwner`? (Manager only). Or JSON link: `{"DocumentName", "DocumentType", "FileUrl", "IsVisibleToOwner"?}`. Response has `IsUploadedFile`; for uploads `FileUrl` = `/api/horse-documents/{DocumentID}/file` |
+| GET | `/horse-documents/{DocumentID}/file` | can view the horse | File content (needs the `Authorization` header, so the FE downloads it with `fetch` then opens a blob URL). `?download=1` = save as attachment |
+| DELETE | `/horse-documents/{DocumentID}` | Owner (own upload, horse in Draft / Rejected), Manager | **204**. 409 `INVALID_STATUS` after submit (owner), 409 `DOCUMENT_IN_USE` if it is evidence of a profile change request |
 
 `DocumentType`: `Passport`, `Microchip Certificate`, `Ownership Proof`, `Handover Record`, `Contract`, `Other`.
 The backend **only stores the link** (`FileUrl`) and does not accept files yet. For now, upload to Google Drive and paste the link.
@@ -782,7 +786,7 @@ Sorting: `Priority = High` first, newest first. `EntityName` + `EntityID` tell w
 |---|---|---|
 | 1 | `vite.config.js`: change `'http://localhost:8080'` to `'http://127.0.0.1:8000'` | The Django backend runs on port 8000 (8080 was the old Java backend). Use `127.0.0.1` because on some machines `localhost` does not reach Django |
 | 2 | `src/api/apiClient.ts`: change the default base URL from MockAPI to `/api` | Call the real backend through the Vite proxy instead of MockAPI |
-| 3 | `apiClient.ts`: attach the `Authorization: Bearer <access>` header to every request | Every API (except `auth/login`, `health`) requires login; a missing token returns **401** |
+| 3 | `apiClient.ts`: attach the `Authorization: Bearer <access>` header to every request | Every API (except `auth/login`, `auth/register`, `auth/google`, `clubs`, `health`) requires login; a missing token returns **401** |
 | 4 | `apiClient.ts`: on 401, call `POST /auth/refresh` with `refresh` to get a new `access`, then retry | `access` expires after 60 minutes |
 | 5 | `apiClient.ts`: on errors read `detail` (show to the user) and `code` (special handling); a 400 error is an object keyed by field | See section 1, error codes part |
 | 6 | `apiClient.ts`: add `apiPatch`, `apiDelete` | Partial updates use `PATCH`, not `PUT` of the whole horse |

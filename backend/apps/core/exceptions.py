@@ -14,6 +14,8 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
+from .i18n import is_english, translate_data
+
 
 class BusinessRuleError(APIException):
     """Vi phạm luật nghiệp vụ, ví dụ duyệt hồ sơ khi ngựa chưa được khám."""
@@ -194,6 +196,13 @@ def friendly_db_error(exc: Exception):
 
 
 def api_exception_handler(exc, context):
+    response = _build_error_response(exc, context)
+    if response is not None and is_english():
+        response.data = translate_data(response.data)  # header X-Language: en
+    return response
+
+
+def _build_error_response(exc, context):
     response = exception_handler(exc, context)
     if response is not None:
         if isinstance(response.data, dict) and "detail" in response.data:

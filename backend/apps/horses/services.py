@@ -9,6 +9,7 @@ import json
 
 from django.utils import timezone
 
+from apps.core import emails
 from apps.core.audit import log_action
 from apps.core.exceptions import BusinessRuleError
 from apps.medical.services import signed_initial_exam_for
@@ -56,6 +57,7 @@ def submit(horse, user):
     horse.touch()
     horse.save(update_fields=["registration_status", "updated_at"])
     log_action(user, "SUBMIT_REGISTRATION", horse, {"RegistrationRequestID": request.id})
+    emails.registration_submitted(horse)
     return horse
 
 
@@ -72,6 +74,7 @@ def verify(horse, user):
     request.status = RegistrationRequest.Status.PENDING_EXAM
     request.save(update_fields=["status"])
     log_action(user, "VERIFY_REGISTRATION", horse, {"RegistrationRequestID": request.id})
+    emails.registration_verified(horse)
     return horse
 
 
@@ -88,6 +91,7 @@ def reject(horse, user, reason):
     request.reviewed_at = now
     request.save(update_fields=["status", "manager_note", "reviewed_by", "reviewed_at"])
     log_action(user, "REJECT_REGISTRATION", horse, {"Reason": reason})
+    emails.registration_rejected(horse, reason)
     return horse
 
 
@@ -136,6 +140,7 @@ def approve(horse, user, horse_code, stall_id=None, manager_note=None):
         stall.save(update_fields=["status"])
 
     log_action(user, "APPROVE_REGISTRATION", horse, {"HorseCode": horse_code, "StallID": stall_id})
+    emails.registration_approved(horse)
     return horse
 
 

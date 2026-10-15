@@ -10,6 +10,8 @@ from apps.accounts.models import Club, User
 from apps.accounts.rbac import ensure_rbac_seed
 from apps.horses.models import Horse, StallAssignment
 from apps.horses.serializers import PROFILE_FIELDS
+from apps.medical.models import MedicalRecord
+from apps.training.models import TrainerSpecialization
 
 
 def seed(*args):
@@ -38,6 +40,19 @@ class SeedDemoTests(TestCase):
             self.assertTrue(all(getattr(horse, attr) for attr in PROFILE_FIELDS), horse.horse_name)
         club = Club.objects.get()
         self.assertTrue(all([club.address, club.phone, club.email]))
+
+        # 2 Vet trong CLB; phiếu khám mẫu do Vet thứ nhất ký
+        vets = User.objects.filter(roles__code="VETERINARIAN", club=manager.club)
+        self.assertEqual(sorted(vets.values_list("email", flat=True)),
+                         ["vet2@equi.local", "vet3@equi.local", "vet@equi.local"])
+        # đủ người cho mỗi vai trò, mỗi trainer một chuyên môn khác nhau
+        self.assertEqual(User.objects.count(), 18)
+        for code, count in {"CLUB_MANAGER": 1, "HEAD_TRAINER": 2, "TRAINER": 3, "WORK_RIDER": 3, "GROOM": 3,
+                            "HORSE_OWNER": 3}.items():
+            self.assertEqual(User.objects.filter(roles__code=code).count(), count, code)
+        specs = TrainerSpecialization.objects.values_list("specialization__code", flat=True)
+        self.assertEqual(sorted(specs), ["ENDURANCE", "FLAT_RACING", "STEEPLECHASE_HURDLE"])
+        self.assertEqual(set(MedicalRecord.objects.values_list("vet__email", flat=True)), {"vet@equi.local"})
 
         seed()  # chạy lại: không tạo trùng
         self.assertEqual(Horse.objects.count(), 6)

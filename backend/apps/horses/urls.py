@@ -12,6 +12,8 @@ urlpatterns = [
     path("stalls", views.StallListView.as_view(), name="stall-list"),
     path("stalls/<int:stall_id>", views.StallDetailView.as_view(), name="stall-detail"),
     path("horses/<int:horse_id>/move-stall", views.MoveStallView.as_view(), name="move-stall"),
+    path("horse-documents/<int:document_id>", views.HorseDocumentDetailView.as_view(), name="horse-document"),
+    path("horse-documents/<int:document_id>/file", views.HorseDocumentFileView.as_view(), name="horse-document-file"),
     path("clubs", views.ClubListView.as_view(), name="club-list"),
     *router.urls,
 ]

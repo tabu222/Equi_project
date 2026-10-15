@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.core.serializers import DBColumnModelSerializer
 
-from .models import Role, User
+from .models import Club, Role, User
 
 
 class UserSerializer(DBColumnModelSerializer):
@@ -71,3 +71,44 @@ class UserCreateSerializer(serializers.Serializer):
         if not Role.objects.filter(code=value).exists():
             raise serializers.ValidationError("RoleCode không tồn tại.")
         return value
+
+
+class OwnerRegisterSerializer(UserCreateSerializer):
+    """Chủ ngựa tự tạo tài khoản ở trang đăng nhập (luôn là HORSE_OWNER, không chọn vai trò khác)."""
+
+    RoleCode = None
+    Password = serializers.CharField(min_length=6, trim_whitespace=False, error_messages={
+        "required": "Cần nhập mật khẩu.", "blank": "Cần nhập mật khẩu.",
+        "min_length": "Mật khẩu phải có ít nhất 6 ký tự."})
+    ClubID = serializers.IntegerField(error_messages={
+        "required": "Cần chọn câu lạc bộ.", "invalid": "Cần chọn câu lạc bộ."})
+
+    def validate_ClubID(self, value):
+        if not Club.objects.filter(pk=value, status="Active").exists():
+            raise serializers.ValidationError("Câu lạc bộ không tồn tại hoặc đã ngừng hoạt động.")
+        return value
+
+
+class GoogleLoginSerializer(serializers.Serializer):
+    """
+    Bước 1: chỉ gửi Credential -> có tài khoản thì đăng nhập; chưa có thì trả SignupRequired.
+    Bước 2 (chủ ngựa mới): gửi lại Credential kèm Phone, Address, ClubID (FullName không bắt buộc).
+    """
+
+    Credential = serializers.CharField(error_messages={"required": "Thiếu Credential từ Google."})
+    FullName = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    Phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    Address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    ClubID = serializers.IntegerField(required=False, allow_null=True)
+
+    @property
+    def wants_signup(self):
+        v = self.validated_data
+        return bool(v.get("Phone") or v.get("Address") or v.get("ClubID"))
+
+
+class GoogleSignupSerializer(OwnerRegisterSerializer):
+    """Kiểm tra thông tin bổ sung khi tạo tài khoản chủ ngựa bằng Google (không cần mật khẩu)."""
+
+    Password = None
+    FullName = serializers.CharField(max_length=150)

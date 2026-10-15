@@ -1,8 +1,14 @@
+from pathlib import Path
+
 from django.db.models import Q
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -15,10 +21,12 @@ from apps.core.permissions import HasAnyPermission, user_has_any
 from apps.core.serializers import fmt_datetime
 from apps.medical.services import annotate_initial_exam_signed
 
+from . import documents as documents_store
 from . import services
-from .models import Horse, ProfileChangeRequest, Stall
+from .models import Horse, HorseDocument, ProfileChangeRequest, Stall
 from .serializers import (
-    ApproveSerializer, HorseCreateSerializer, HorseDetailSerializer, HorseDocumentSerializer, HorseSerializer,
+    ApproveSerializer, HorseCreateSerializer, HorseDetailSerializer, HorseDocumentSerializer,
+    HorseDocumentUploadSerializer, HorseSerializer,
     HorseWriteSerializer, ProfileChangeRequestCreateSerializer, ProfileChangeRequestSerializer, ReasonSerializer,
     RegistrationRequestSerializer, ReviewNoteSerializer, StallSerializer, StallWriteSerializer,
 )
@@ -178,22 +186,46 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return Response(RegistrationRequestSerializer(horse.registration_requests.all(), many=True).data)
 
     # ---------------- giấy tờ ----------------
-    @action(detail=True, methods=["get", "post"])
+    @extend_schema(methods=["POST"], request={"multipart/form-data": HorseDocumentUploadSerializer,
+                                               "application/json": HorseDocumentSerializer},
+                   responses=HorseDocumentSerializer, summary="Tải file giấy tờ / ảnh (multipart) hoặc lưu link (JSON)")
+    @action(detail=True, methods=["get", "post"], parser_classes=[JSONParser, MultiPartParser, FormParser])
     def documents(self, request, pk=None):
+        """
+        GET  -> danh sách giấy tờ (Owner chỉ thấy giấy tờ IsVisibleToOwner).
+        POST multipart/form-data {File, DocumentType, DocumentName?, IsVisibleToOwner?} -> tải file lên.
+        POST JSON {DocumentName, DocumentType, FileUrl, IsVisibleToOwner?} -> lưu link ngoài (giữ như cũ).
+        """
         horse = self.get_object()
         owner_only = not request.user.has_perm(STAFF_VIEW)
         if request.method == "GET":
-            documents = horse.documents.all()
+            documents = horse.documents.select_related("uploaded_by")
             if owner_only:
                 documents = documents.filter(is_visible_to_owner=True)
             return Response(HorseDocumentSerializer(documents, many=True).data)
 
         if not can_manage_registration(request.user, horse):
             raise PermissionDenied("Bạn không được thêm giấy tờ cho ngựa này.")
-        data = HorseDocumentSerializer(data=request.data)
-        data.is_valid(raise_exception=True)
-        extra = {"is_visible_to_owner": True} if owner_only else {}
-        document = data.save(horse=horse, uploaded_by=request.user, **extra)
+        if horse.registration_status == Horse.RegistrationStatus.ARCHIVED:
+            raise BusinessRuleError("Ngựa đã lưu trữ, không thêm giấy tờ được.", "INVALID_STATUS")
+
+        if "File" in request.FILES or (request.content_type or "").startswith("multipart/"):
+            data = HorseDocumentUploadSerializer(data=request.data)
+            data.is_valid(raise_exception=True)
+            v = data.validated_data
+            file = v["File"]
+            file_url = documents_store.save_upload(horse.id, file)
+            name = (v.get("DocumentName") or "").strip() or Path(file.name).name[:150]
+            visible = True if owner_only else v.get("IsVisibleToOwner", True)
+            document = HorseDocument.objects.create(
+                horse=horse, document_name=name, document_type=v["DocumentType"], file_url=file_url,
+                uploaded_by=request.user, is_visible_to_owner=visible,
+            )
+        else:
+            data = HorseDocumentSerializer(data=request.data)
+            data.is_valid(raise_exception=True)
+            extra = {"is_visible_to_owner": True} if owner_only else {}
+            document = data.save(horse=horse, uploaded_by=request.user, **extra)
         log_action(request.user, "ADD_DOCUMENT", horse, {"DocumentID": document.id})
         return Response(HorseDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
 
@@ -318,13 +350,72 @@ class MoveStallView(APIView):
 
 
 class ClubListView(APIView):
-    """GET /api/clubs - danh sách CLB đang hoạt động (Owner chọn CLB khi tự đăng ký ngựa)."""
+    """GET /api/clubs - danh sách CLB đang hoạt động (công khai: trang đăng ký tài khoản / đăng ký ngựa)."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
 
     def get(self, request):
         return Response([
             {"ClubID": club.id, "ClubName": club.club_name, "Address": club.address}
             for club in Club.objects.filter(status="Active")
         ])
+
+
+class HorseDocumentDetailView(APIView):
+    """
+    DELETE /api/horse-documents/<DocumentID>
+      - Owner: xóa giấy tờ mình đã tải khi hồ sơ còn Nháp / Bị từ chối.
+      - Manager: xóa giấy tờ của ngựa trong CLB mình.
+      - Giấy tờ đang làm bằng chứng cho yêu cầu sửa lý lịch thì không xóa được.
+    """
+
+    def delete(self, request, document_id):
+        document = get_visible_document(request.user, document_id)
+        horse = document.horse
+        if not can_manage_registration(request.user, horse):
+            raise PermissionDenied("Bạn không được xóa giấy tờ của ngựa này.")
+        if not request.user.has_perm("HORSE_REGISTER_REVIEW"):
+            if document.uploaded_by_id != request.user.pk:
+                raise PermissionDenied("Chỉ xóa được giấy tờ do chính bạn tải lên.")
+            if horse.registration_status not in services.EDITABLE_STATUSES:
+                raise BusinessRuleError("Hồ sơ đã gửi, không xóa giấy tờ được nữa.", "INVALID_STATUS")
+        if ProfileChangeRequest.objects.filter(evidence_document=document).exists():
+            raise BusinessRuleError("Giấy tờ đang là bằng chứng của yêu cầu sửa lý lịch, không xóa được.",
+                                    "DOCUMENT_IN_USE")
+        file_url = document.file_url
+        log_action(request.user, "DELETE_DOCUMENT", horse, {"DocumentID": document.id,
+                                                           "DocumentName": document.document_name})
+        document.delete()
+        documents_store.delete_file(file_url)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class HorseDocumentFileView(APIView):
+    """GET /api/horse-documents/<DocumentID>/file -> nội dung file đã tải lên (người được xem ngựa mới tải được)."""
+
+    def get(self, request, document_id):
+        document = get_visible_document(request.user, document_id)
+        if not documents_store.is_upload(document.file_url):
+            raise NotFound("Giấy tờ này là link ngoài, mở bằng FileUrl.")
+        path = documents_store.stored_path(document.file_url)
+        if not path.exists():
+            raise NotFound("Không tìm thấy file trên máy chủ.")
+        filename = document.document_name
+        if not Path(filename).suffix:
+            filename += path.suffix
+        return FileResponse(open(path, "rb"), content_type=documents_store.content_type(document.file_url),
+                            as_attachment=request.query_params.get("download") == "1", filename=filename)
+
+
+def get_visible_document(user, document_id):
+    document = HorseDocument.objects.select_related("horse").filter(pk=document_id).first()
+    if document is None:
+        raise NotFound("Không tìm thấy giấy tờ.")
+    get_visible_horse(user, document.horse_id)
+    if not user.has_perm(STAFF_VIEW) and not document.is_visible_to_owner:
+        raise NotFound("Không tìm thấy giấy tờ.")
+    return document
 
 
 def get_visible_horse(user, horse_id):

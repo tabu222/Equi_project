@@ -61,15 +61,40 @@ After that every API can be called from the page. Postman also works: import <ht
 
 Do not write passwords in source code or the README, and never commit `.env`.
 
-Demo accounts created by `seed_demo` (all with the password you entered): `manager@equi.local`, `headtrainer@equi.local`,
-`trainer@equi.local`, `rider@equi.local`, `vet@equi.local`, `groom@equi.local`, `owner@equi.local`.
+Demo accounts created by `seed_demo` (all with the password you entered):
+
+| Role | Accounts |
+|---|---|
+| Club Manager | `manager@equi.local` |
+| Head Trainer | `headtrainer@equi.local`, `headtrainer2@equi.local` |
+| Trainer | `trainer@equi.local` (Flat Racing), `trainer2@equi.local` (Steeplechase), `trainer3@equi.local` (Endurance) |
+| Work Rider | `rider@equi.local`, `rider2@equi.local`, `rider3@equi.local` |
+| Vet | `vet@equi.local`, `vet2@equi.local`, `vet3@equi.local` |
+| Groom | `groom@equi.local`, `groom2@equi.local`, `groom3@equi.local` |
+| Horse Owner | `owner@equi.local`, `owner2@equi.local`, `owner3@equi.local` |
+
+There are several vets: any vet in the club can take an intake exam, but only the vet who opened a draft record can edit or sign it.
 It also creates 6 sample horses for `owner@equi.local` (3 Approved, 1 PendingExam, 1 Submitted, 1 Draft).
 All accounts have a real name, phone number and address; every horse has a full profile (no empty fields).
 Running it again is safe: nothing is duplicated, and old accounts get their missing club / phone / address and real names.
 
+## Language (VI / EN)
+
+API messages are Vietnamese by default. The frontend sends `X-Language: en` (or `?lang=en`) to get English
+error messages and notification titles. Translations live in `apps/core/i18n.py`.
+
+## Optional: email, Google sign-in, uploads
+
+- **Emails** (new horse to verify, verified, exam signed, approved, rejected, account created): without settings they are
+  printed in the backend window. To send real mail through Gmail, fill `EMAIL_HOST_USER` and `EMAIL_HOST_PASSWORD`
+  (a Gmail *App password*) in `.env`.
+- **Sign in with Google**: set `GOOGLE_CLIENT_ID` in `.env` and the same value as `VITE_GOOGLE_CLIENT_ID` in `frontend/.env`.
+- **Uploaded documents** are stored in `media/` (ignored by Git). Run `pip install -r requirements.txt` again after
+  pulling: Google sign-in needs `google-auth`.
+
 ## Running the tests
 
-86 tests, using in-memory SQLite (no SQL Server needed):
+106 tests, using in-memory SQLite (no SQL Server needed):
 
 ```powershell
 python manage.py test --settings=config.settings_test
@@ -77,6 +102,7 @@ python manage.py test --settings=config.settings_test
 
 ## Notes
 
-- Create users with `seed_demo` or `POST /api/users`, not with SQL `INSERT`
+- Horse owners can sign up themselves on the login page (`POST /api/auth/register`); club staff accounts are created by the Manager (`POST /api/users`).
+- Create users with `seed_demo`, `POST /api/auth/register` or `POST /api/users`, not with SQL `INSERT`
   (passwords must be hashed by Django).
 - Every data change is logged in the `AuditLog` table.

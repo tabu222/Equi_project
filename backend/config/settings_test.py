@@ -28,3 +28,12 @@ LOGGING = {"version": 1, "disable_existing_loggers": False,
            "loggers": {"django.request": {"level": "CRITICAL"}}}
 
 SECRET_KEY = "test-only-secret-key-not-used-anywhere-else-000000"
+
+# file tải lên trong test ghi vào thư mục tạm, không đụng media/ thật
+import tempfile  # noqa: E402
+
+MEDIA_ROOT = Path(tempfile.mkdtemp(prefix="equi-test-media-"))  # noqa: F405
+# email trong test giữ trong bộ nhớ (django.core.mail.outbox), gửi ngay không chạy luồng nền
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+EMAIL_ASYNC = False
+GOOGLE_CLIENT_ID = "test-client-id.apps.googleusercontent.com"

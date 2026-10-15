@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "apps.core.i18n.LanguageMiddleware",  # X-Language: en -> câu thông báo tiếng Anh
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -131,7 +132,36 @@ SIMPLE_JWT = {
 
 # Frontend dev chạy qua Vite proxy (cùng origin) nên thường không cần CORS;
 # vẫn cho phép sẵn cổng Vite để gọi thẳng khi cần.
+from corsheaders.defaults import default_headers  # noqa: E402
+
+CORS_ALLOW_HEADERS = (*default_headers, "x-language")
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
+# File giấy tờ tải lên (hộ chiếu, giấy sở hữu, ảnh ngựa...). Không commit thư mục này lên Git.
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT") or BASE_DIR / "media")
+UPLOAD_MAX_MB = int(os.getenv("UPLOAD_MAX_MB", "10"))
+DATA_UPLOAD_MAX_MEMORY_SIZE = (UPLOAD_MAX_MB + 1) * 1024 * 1024
+
+# ---------- Email (Gmail SMTP) ----------
+# Gmail: bật xác minh 2 bước, tạo "App password" (16 ký tự) rồi điền 2 dòng EMAIL_HOST_USER / EMAIL_HOST_PASSWORD
+# trong .env. Để trống thì email chỉ in ra cửa sổ chạy backend (dùng khi demo / dev).
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip()
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").replace(" ", "")
+EMAIL_TIMEOUT = 15
+EMAIL_BACKEND = ("django.core.mail.backends.smtp.EmailBackend" if EMAIL_HOST_USER and EMAIL_HOST_PASSWORD
+                 else "django.core.mail.backends.console.EmailBackend")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL") or (
+    f"EquiTrack <{EMAIL_HOST_USER}>" if EMAIL_HOST_USER else "EquiTrack <no-reply@equi.local>")
+EMAIL_ASYNC = env_bool("EMAIL_ASYNC", True)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# ---------- Đăng nhập bằng Google ----------
+# Client ID lấy ở Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application).
+# Frontend dùng CÙNG giá trị này (VITE_GOOGLE_CLIENT_ID). Để trống = tắt đăng nhập Google.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
 
 LANGUAGE_CODE = "vi"
 TIME_ZONE = "Asia/Ho_Chi_Minh"

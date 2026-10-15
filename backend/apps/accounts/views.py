@@ -7,14 +7,20 @@ from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.core import emails
 from apps.core.audit import log_action
 from apps.core.permissions import HasAnyPermission, user_has_any
 
 from .models import Role, User, UserRole
-from .serializers import CurrentUserSerializer, LoginSerializer, UserCreateSerializer, UserSerializer
+from .google_auth import verify_google_credential
+from .serializers import (
+    CurrentUserSerializer, GoogleLoginSerializer, GoogleSignupSerializer, LoginSerializer, OwnerRegisterSerializer,
+    UserCreateSerializer, UserSerializer,
+)
 
 
 class LoginView(APIView):
@@ -43,6 +49,107 @@ class LoginView(APIView):
             "refresh": str(refresh),
             "User": CurrentUserSerializer(user).data,
         })
+
+
+class RegisterThrottle(AnonRateThrottle):
+    rate = "20/hour"  # chặn spam tạo tài khoản hàng loạt
+
+
+class RegisterView(APIView):
+    """
+    POST /api/auth/register  (không cần đăng nhập) - chủ ngựa tự tạo tài khoản.
+    body: {"FullName", "Email", "Phone", "Address", "Password", "ClubID"}
+    -> 201 {"access", "refresh", "User"}  (đăng nhập luôn, giống /api/auth/login)
+    Vai trò luôn là HORSE_OWNER; nhân viên CLB vẫn do Manager tạo qua POST /api/users.
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [RegisterThrottle]
+
+    @extend_schema(request=OwnerRegisterSerializer, auth=[], summary="Chủ ngựa tự đăng ký tài khoản")
+    def post(self, request):
+        data = OwnerRegisterSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        v = data.validated_data
+        user = User.objects.create_user(
+            email=v["Email"],
+            password=v["Password"],
+            full_name=v["FullName"].strip(),
+            phone=v["Phone"],
+            address=v["Address"].strip(),
+            club_id=v["ClubID"],
+        )
+        UserRole.objects.create(user=user, role=Role.objects.get(code="HORSE_OWNER"), assigned_by=None)
+        log_action(user, "REGISTER_OWNER", user, {"ClubID": v["ClubID"]})
+        emails.account_registered(user)
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "User": CurrentUserSerializer(user).data,
+        }, status=status.HTTP_201_CREATED)
+
+
+def _token_response(user, code=status.HTTP_200_OK):
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        "access": str(refresh.access_token),
+        "refresh": str(refresh),
+        "User": CurrentUserSerializer(user).data,
+    }, status=code)
+
+
+class GoogleThrottle(AnonRateThrottle):
+    rate = "120/hour"
+
+
+class GoogleLoginView(APIView):
+    """
+    POST /api/auth/google  (không cần đăng nhập)
+      {"Credential": "<ID token Google>"}
+        -> email đã có tài khoản: 200 {access, refresh, User}  (mọi vai trò, kể cả nhân viên CLB)
+        -> chưa có: 200 {"SignupRequired": true, "Email", "FullName"}  -> FE hỏi thêm thông tin
+      {"Credential", "FullName"?, "Phone", "Address", "ClubID"}
+        -> tạo tài khoản CHỦ NGỰA (không có mật khẩu, đăng nhập bằng Google): 201 {access, refresh, User}
+    """
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [GoogleThrottle]
+
+    def get_authenticate_header(self, request):
+        return 'Bearer realm="api"'
+
+    @extend_schema(request=GoogleLoginSerializer, auth=[], summary="Đăng nhập / đăng ký bằng Google")
+    def post(self, request):
+        data = GoogleLoginSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        google = verify_google_credential(data.validated_data["Credential"])
+        user = User.objects.filter(email__iexact=google["email"]).first()
+        if user is not None:
+            if not user.is_active:
+                raise AuthenticationFailed("Email hoặc mật khẩu không đúng, hoặc tài khoản đã bị khóa.")
+            log_action(user, "LOGIN_GOOGLE", user)
+            return _token_response(user)
+
+        if not data.wants_signup:
+            return Response({"SignupRequired": True, "Email": google["email"], "FullName": google["name"]})
+
+        body = {key: data.validated_data.get(key) for key in ("Phone", "Address", "ClubID")}
+        body["FullName"] = (data.validated_data.get("FullName") or google["name"]).strip()
+        body["Email"] = google["email"]
+        signup = GoogleSignupSerializer(data=body)
+        signup.is_valid(raise_exception=True)
+        v = signup.validated_data
+        user = User.objects.create_user(
+            email=v["Email"], password=None, full_name=v["FullName"], phone=v["Phone"],
+            address=v["Address"].strip(), club_id=v["ClubID"],
+        )
+        UserRole.objects.create(user=user, role=Role.objects.get(code="HORSE_OWNER"), assigned_by=None)
+        log_action(user, "REGISTER_OWNER", user, {"ClubID": v["ClubID"], "Via": "Google"})
+        emails.account_registered(user)
+        return _token_response(user, status.HTTP_201_CREATED)
 
 
 class MeView(APIView):
@@ -88,6 +195,7 @@ class UserListCreateView(APIView):
         )
         UserRole.objects.create(user=user, role=Role.objects.get(code=v["RoleCode"]), assigned_by=request.user)
         log_action(request.user, "CREATE_USER", user, {"RoleCode": v["RoleCode"]})
+        emails.account_created_by_manager(user, request.user)
         body = UserSerializer(user).data
         if not v.get("Password"):
             body["TemporaryPassword"] = temporary_password  # chỉ trả một lần để Manager báo cho chủ ngựa

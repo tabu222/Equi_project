@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.core.serializers import DBColumnModelSerializer, fmt_datetime
 
+from .documents import content_type, is_upload
 from .models import Horse, HorseDocument, ProfileChangeRequest, RegistrationRequest, Stall
 
 # Các trường lý lịch: Owner / Manager được nhập khi hồ sơ còn Draft hoặc Rejected,
@@ -211,12 +212,36 @@ class HorseCreateSerializer(HorseWriteSerializer):
 
 
 class HorseDocumentSerializer(DBColumnModelSerializer):
+    """Giấy tờ dạng link ngoài (JSON). File tải lên dùng HorseDocumentUploadSerializer (multipart)."""
+
+    UploadedByName = serializers.CharField(source="uploaded_by.full_name", read_only=True, default=None)
+
     class Meta:
         model = HorseDocument
-        fields = ["id", "horse", "document_name", "document_type", "file_url", "uploaded_by",
+        fields = ["id", "horse", "document_name", "document_type", "file_url", "uploaded_by", "UploadedByName",
                   "is_visible_to_owner", "uploaded_at"]
         read_only_fields = ["id", "horse", "uploaded_by", "uploaded_at"]
         extra_kwargs = {"file_url": {"required": True, "allow_null": False}}
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        uploaded = is_upload(instance.file_url)
+        data["IsUploadedFile"] = uploaded
+        if uploaded:
+            # không lộ đường dẫn trên ổ đĩa; FE tải file qua API (có kiểm tra quyền)
+            data["FileUrl"] = f"/api/horse-documents/{instance.id}/file"
+            data["ContentType"] = content_type(instance.file_url)
+        return data
+
+
+class HorseDocumentUploadSerializer(serializers.Serializer):
+    """multipart/form-data: File, DocumentType, DocumentName (không bắt buộc), IsVisibleToOwner (Manager)."""
+
+    File = serializers.FileField(error_messages={"required": "Cần chọn file.", "empty": "File rỗng."})
+    DocumentType = serializers.ChoiceField(choices=HorseDocument.DocumentType.choices, error_messages={
+        "required": "Cần chọn loại giấy tờ.", "invalid_choice": "Loại giấy tờ không hợp lệ."})
+    DocumentName = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    IsVisibleToOwner = serializers.BooleanField(required=False, default=True)
 
 
 class RegistrationRequestSerializer(DBColumnModelSerializer):

@@ -13,6 +13,7 @@ from django.db.models import Exists, OuterRef
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .i18n import is_english, translate_text
 from .serializers import fmt_datetime
 
 
@@ -185,4 +186,9 @@ def _ts(value):
 
 class NotificationView(APIView):
     def get(self, request):
-        return Response(build_notifications(request.user))
+        items = build_notifications(request.user)
+        if is_english():  # header X-Language: en
+            for item in items:
+                item["Title"] = translate_text(item["Title"])
+                item["Message"] = translate_text(item["Message"])
+        return Response(items)
