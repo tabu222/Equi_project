@@ -18,3 +18,5 @@ htmlcov/
 .vs/
 .DS_Store
 Thumbs.db
+media/
+*.log
