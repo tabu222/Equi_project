@@ -1,6 +1,0 @@
-from django.apps import AppConfig
-
-
-class MedicalConfig(AppConfig):
-    name = "apps.medical"
-    label = "medical"
