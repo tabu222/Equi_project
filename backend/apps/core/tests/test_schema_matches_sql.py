@@ -9,7 +9,7 @@ from django.apps import apps
 from django.conf import settings
 from django.test import SimpleTestCase
 
-SQL = (Path(settings.BASE_DIR) / "sql" / "horse_v2.sql").read_text(encoding="utf-8")
+SQL = Path(settings.SQL_SCRIPT).read_text(encoding="utf-8")
 SQL_TYPES = {"INT", "BIGINT", "BIT", "VARCHAR", "NVARCHAR", "DATE", "DATETIME2", "TIME", "DECIMAL", "AS"}
 
 

@@ -166,7 +166,7 @@ class RbacMatchesSqlTests(SimpleTestCase):
     """apps/accounts/rbac.py phải giống hệt phần SEED DATA trong sql/horse_v2.sql."""
 
     def test_rbac_matches_sql(self):
-        sql = (Path(settings.BASE_DIR) / "sql" / "horse_v2.sql").read_text(encoding="utf-8")
+        sql = Path(settings.SQL_SCRIPT).read_text(encoding="utf-8")
         roles_block = sql.split("INSERT INTO dbo.Role ")[1].split("GO")[0]
         perms_block = sql.split("INSERT INTO dbo.Permission ")[1].split("GO")[0]
         mapping_block = sql.split("INSERT INTO dbo.RolePermission ")[1].split("GO")[0]
@@ -186,6 +186,6 @@ class SpecializationSeedMatchesSqlTests(SimpleTestCase):
     def test_specializations_match_sql(self):
         from apps.training.seed import SPECIALIZATIONS
 
-        sql = (Path(settings.BASE_DIR) / "sql" / "horse_v2.sql").read_text(encoding="utf-8")
+        sql = Path(settings.SQL_SCRIPT).read_text(encoding="utf-8")
         block = sql.split("INSERT INTO dbo.Specialization ")[1].split("GO")[0]
         self.assertEqual(dict(re.findall(r"\('([A-Z_]+)',\s*N'([^']+)'", block)), SPECIALIZATIONS)

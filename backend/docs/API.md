@@ -238,7 +238,7 @@ Approval conditions (`approve`): the Vet has signed the intake examination recor
 | DELETE | `/horse-documents/{DocumentID}` | Owner (own upload, horse in Draft / Rejected), Manager | **204**. 409 `INVALID_STATUS` after submit (owner), 409 `DOCUMENT_IN_USE` if it is evidence of a profile change request |
 
 `DocumentType`: `Passport`, `Microchip Certificate`, `Ownership Proof`, `Handover Record`, `Contract`, `Other`.
-The backend **only stores the link** (`FileUrl`) and does not accept files yet. For now, upload to Google Drive and paste the link.
+Uploaded files are stored on the backend server (`MEDIA_ROOT`, default `backend/media/`, never committed). A JSON link (`FileUrl`, e.g. a Google Drive link) is still accepted for files kept elsewhere.
 
 ### 4.4 Examinations (Vet)
 
@@ -844,7 +844,7 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:8000
 | `correctionRequests[]` | `GET /profile-change-requests?HorseID={id}` | |
 | `auditLogs[]` | `GET /horses/{id}/audit-logs` | |
 | `ownershipHistory[]` | **remove** | the team decided not to store ownership history |
-| `medicalRecords[]`, `vaccinations[]` | Flow 3 (not done yet) | |
+| `medicalRecords[]`, `vaccinations[]` | Flow 3 APIs | see section 6 |
 
 ### 9.3 Profile status
 

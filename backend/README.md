@@ -20,7 +20,7 @@ apps/horses/       Flow 1 – Horse intake
 apps/training/     Flow 2 – Training
 apps/medical/      Flow 3 – Medical
 apps/care/         Flow 4 – Care
-sql/horse_v2.sql   database script
+../sql/horse_v2.sql   database script (in the repository root)
 docs/API.md        API contract
 ```
 
@@ -33,7 +33,7 @@ Do not run `python manage.py migrate` / `makemigrations`.
 
 Requirements: Python 3.12+, SQL Server + SSMS, Microsoft ODBC Driver 17 or 18 for SQL Server.
 
-1. Open `sql/horse_v2.sql` in SSMS and run it (F5) to create the database.
+1. Open `sql/horse_v2.sql` (repository root) in SSMS and run it (F5) to create the database.
 2. Open PowerShell in the `backend` folder and run:
 
 ```powershell

@@ -16,6 +16,10 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+# Script tạo database: sql/ ở thư mục gốc repo (cạnh backend/ và frontend/); bản cũ để trong backend/sql/
+SQL_SCRIPT = next((p for p in (BASE_DIR.parent / "sql" / "horse_v2.sql", BASE_DIR / "sql" / "horse_v2.sql")
+                   if p.exists()), BASE_DIR.parent / "sql" / "horse_v2.sql")
+
 
 def env_bool(name: str, default: bool = False) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
