@@ -1,82 +1,115 @@
-# Equi backend – Racehorse Training & Management System
+<div align="center">
 
-Django REST backend for the Equi project, running at http://127.0.0.1:8000.
+![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=flat&logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django_5.2-092E20?style=flat&logo=django&logoColor=white)
+![Django REST Framework](https://img.shields.io/badge/Django_REST_Framework-A30000?style=flat&logo=django&logoColor=white)
+![JWT](https://img.shields.io/badge/JWT-000000?style=flat&logo=jsonwebtokens&logoColor=white)
+![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?style=flat&logo=microsoftsqlserver&logoColor=white)
+![React](https://img.shields.io/badge/React_19-20232A?style=flat&logo=react&logoColor=61DAFB)
+![React Router](https://img.shields.io/badge/React_Router_7-CA4245?style=flat&logo=reactrouter&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite_8-646CFF?style=flat&logo=vite&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
+![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)
 
-- Scope: all **4 flows** over all 37 tables of `horse_v2.sql`, JWT login, permissions from the `Role` / `Permission` tables:
-  - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
-  - **Flow 2 – Training**: horse assessment, trainer assignment, training plans (approved by the Head Trainer), training sessions, Substitute Trainer, results, reviews.
-  - **Flow 3 – Medical**: health reports, medical records (draft / signed / amendment), Training Lock, treatments, vaccinations, medical schedules.
-  - **Flow 4 – Care**: diet plans (approved by the Vet), Groom care tasks, inventory.
-  - Notifications for each role (`GET /api/notifications`).
-- API contract for the frontend: [`docs/API.md`](docs/API.md).
+# EquiTrack — Racehorse Training & Management System
 
-## Project structure
+*A full-stack web application for managing a horse racing club: horse intake, training, medical care and daily care.*
 
-```
-config/            Django settings
-apps/core/         shared code (errors, permissions, notifications, tests)
-apps/accounts/     users, roles, login
-apps/horses/       Flow 1 – Horse intake
-apps/training/     Flow 2 – Training
-apps/medical/      Flow 3 – Medical
-apps/care/         Flow 4 – Care
-sql/horse_v2.sql   database script
-docs/API.md        API contract
-```
+![License](https://img.shields.io/badge/license-academic-lightgrey?style=flat)
 
-Each app is split into: `models.py` (tables), `serializers.py` (JSON in / out), `services.py` (business rules), `views.py` (API), `urls.py`.
+</div>
 
-All models are `managed = False`: **the tables are created by `horse_v2.sql`; Django never creates or alters tables**.
-Do not run `python manage.py migrate` / `makemigrations`.
+---
 
-## Setup (Windows)
+## Overview
 
-Requirements: Python 3.12+, SQL Server + SSMS, Microsoft ODBC Driver 17 or 18 for SQL Server.
+EquiTrack is a full-stack web application designed to digitize and streamline the daily operations of a horse racing club, covering the whole lifecycle of a racehorse: intake and registration, training, medical care and daily care. The system serves seven user roles—Club Manager, Head Trainer, Trainer, Work Rider, Veterinarian, Groom and Horse Owner—each working in its own workspace within a unified React frontend, backed by a Django REST API and a SQL Server database.
 
-1. Open `sql/horse_v2.sql` in SSMS and run it (F5) to create the database.
-2. Open PowerShell in the project folder and run:
+This software solution was engineered as a capstone fulfillment for the SWP391 – Software Development Project curriculum at FPT University Ho Chi Minh City (Fall 2026).
 
-```powershell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
-```
+## System Architecture
 
-If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
-
-3. Edit `.env` for your machine (see the comments in the file), then:
-
-```powershell
-python manage.py seed_demo --password <your-dev-password>
-python manage.py runserver 8000
+```mermaid
+graph LR
+    U["👤 Users<br/>7 roles"] --> FE["Frontend<br/>React + Vite"]
+    FE -- "REST API + JWT" --> BE
+    subgraph BE["Backend — Django REST Framework"]
+        direction TB
+        A["Accounts & Roles"]
+        M1["Horse Intake"]
+        M2["Training"]
+        M3["Medical"]
+        M4["Care"]
+    end
+    BE --> DB[("SQL Server")]
 ```
 
-Check: <http://127.0.0.1:8000/api/health> → `{"backend": "UP", "database": "UP"}`.
-If it shows `"database": "DOWN"`, check `DB_HOST` / `DB_USER` / `DB_PASSWORD` / `DB_ODBC_DRIVER` in `.env`.
+| Layer | Technology | Responsibility |
+|---|---|---|
+| **Presentation** | React 19 · Vite 8 · React Router 7 · JavaScript + TypeScript | User interface and a workspace for each of the 7 roles |
+| **API** | Django REST Framework · SimpleJWT · drf-spectacular (Swagger) | Receives requests, authenticates users, checks role permissions |
+| **Business** | Django 5.2 apps: `accounts`, `horses`, `training`, `medical`, `care`, `core` | Business rules of the four modules: horse intake, training, medical care and daily care |
+| **Data** | SQL Server 2019+ (`mssql-django`, ODBC Driver 17/18) | Stores data with constraints and triggers (`sql/horse_v2.sql`) |
 
-Test the API in the browser with **Swagger**: open <http://127.0.0.1:8000/api/docs>,
-call `POST /api/auth/login` (Try it out), copy the `access` token, click **Authorize** and paste it.
-After that every API can be called from the page. Postman also works: import <http://127.0.0.1:8000/api/schema>.
+## Project Structure
 
-Do not write passwords in source code or the README, and never commit `.env`.
-
-Demo accounts created by `seed_demo` (all with the password you entered): `manager@equi.local`, `headtrainer@equi.local`,
-`trainer@equi.local`, `rider@equi.local`, `vet@equi.local`, `groom@equi.local`, `owner@equi.local`.
-It also creates 6 sample horses for `owner@equi.local` (3 Approved, 1 PendingExam, 1 Submitted, 1 Draft).
-All accounts have a real name, phone number and address; every horse has a full profile (no empty fields).
-Running it again is safe: nothing is duplicated, and old accounts get their missing club / phone / address and real names.
-
-## Running the tests
-
-86 tests, using in-memory SQLite (no SQL Server needed):
-
-```powershell
-python manage.py test --settings=config.settings_test
+```
+Equine_Project/
+├── backend/                     # Django REST API
+│   ├── apps/
+│   │   ├── accounts/            # users, roles, authentication
+│   │   ├── horses/              # horse intake: registration, examination, stalls
+│   │   ├── training/            # training: assessment, plans, sessions
+│   │   ├── medical/             # medical: records, treatments, vaccinations
+│   │   ├── care/                # daily care: diet, care tasks, inventory
+│   │   └── core/                # shared: permissions, notifications, audit log, tests
+│   ├── config/                  # Django settings
+│   ├── docs/API.md              # API contract for the frontend
+│   ├── manage.py
+│   └── requirements.txt
+├── frontend/                    # React + Vite web app
+│   ├── public/
+│   └── src/
+│       ├── api/                 # calls to the backend
+│       ├── components/          # shared components
+│       └── pages/               # landing, manager, owner, vet
+├── sql/
+│   └── horse_v2.sql             # database script
+└── README.md
 ```
 
-## Notes
+## Getting Started
 
-- Create users with `seed_demo` or `POST /api/users`, not with SQL `INSERT`
-  (passwords must be hashed by Django).
-- Every data change is logged in the `AuditLog` table.
+### Prerequisites
+
+- **SQL Server** 2019+ and **SSMS**
+- **Microsoft ODBC Driver** 17 or 18 for SQL Server
+- **Python** 3.12+
+- **Node.js** 20.19+ or 22.12+ (npm included)
+
+### Default Ports
+
+| Service | Port | URL |
+|---|---|---|
+| Frontend (Vite) | 5173 | http://localhost:5173 |
+| Backend API | 8000 | http://127.0.0.1:8000/api |
+| Swagger UI | 8000 | http://127.0.0.1:8000/api/docs |
+| Health check | 8000 | http://127.0.0.1:8000/api/health |
+| SQL Server | 1433 | `localhost\SQLEXPRESS` |
+
+## Team
+
+| Student ID | Name | GitHub | Role |
+|---|---|---|---|
+| — | Hằng | [@tabu222](https://github.com/tabu222) | Backend |
+| — | Dương | [@bachduong0107](https://github.com/bachduong0107) | Backend |
+| — | Minh | [@dangvibaominh-hub](https://github.com/dangvibaominh-hub) | Frontend |
+| — | Tiến | [@tien105](https://github.com/tien105) | Frontend |
+
+---
+
+<div align="center">
+
+*SWP391 — FPT University Ho Chi Minh City · For academic purposes only.*
+
+</div>
