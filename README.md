@@ -101,10 +101,10 @@ Equine_Project/
 
 | Student ID | Name | GitHub | Role |
 |---|---|---|---|
-| — | Hằng | [@tabu222](https://github.com/tabu222) | Backend |
-| — | Dương | [@bachduong0107](https://github.com/bachduong0107) | Backend |
-| — | Minh | [@dangvibaominh-hub](https://github.com/dangvibaominh-hub) | Frontend |
-| — | Tiến | [@tien105](https://github.com/tien105) | Frontend |
+| QE190148 |Trần Thu Hằng | [@tabu222](https://github.com/tabu222) | Backend |
+| — |Nguyễn Đoàn Bạch Dương | [@bachduong0107](https://github.com/bachduong0107) | Backend |
+| — |Hà Việt Tiến | [@tien105](https://github.com/tien105) | Frontend |
+| — |Đặng Vi Bảo Minh | [@dangvibaominh-hub](https://github.com/dangvibaominh-hub) | Frontend |
 
 ---
 
