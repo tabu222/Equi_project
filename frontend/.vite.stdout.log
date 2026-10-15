@@ -1,6 +1,0 @@
-
-  VITE v8.3.4  ready in 2307 ms
-
-  ➜  Local:   http://127.0.0.1:5173/
-3:03:32 PM [vite] (client) hmr update /src/App.jsx
-3:03:47 PM [vite] (client) hmr update /src/App.jsx, /src/pages/manager/HorseList.jsx, /src/pages/vet/HorsesNeedingExam.jsx, /src/pages/manager/CreateHorse.jsx
