@@ -1,14 +1,32 @@
 :root {
+<<<<<<< Updated upstream
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #243c2f;
   background: #f4f8f5;
+=======
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  color: #26382d;
+  background: #f4f7f4;
+
+>>>>>>> Stashed changes
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
   font-weight: 400;
   font-size: 14px;
 
+<<<<<<< Updated upstream
   --app-bg: #f4f8f5;
   --sidebar-bg: #e7f1ea;
   --surface: #ffffff;
@@ -22,6 +40,34 @@
   --success-bg: #e5f2e9;
   --warning-bg: #fff2d3;
   --info-bg: #e7eff9;
+=======
+  --app-bg: #f4f7f4;
+  --sidebar-bg: #eaf1eb;
+
+  --surface: #ffffff;
+  --surface-soft: #f3f7f4;
+  --surface-row: #f8fbf8;
+
+  --green-primary: #176c46;
+  --green-dark: #173a2a;
+  --green-muted: #506457;
+
+  --border: #d5e0d7;
+  --nav-active: #dcebe1;
+
+  --success-bg: #e6f2e9;
+  --warning-bg: #fff4d9;
+  --info-bg: #eaf1f8;
+
+  --text-primary: #26382d;
+  --text-secondary: #506457;
+
+  --danger: #9a3c34;
+  --danger-soft: #fbefed;
+
+  --focus-ring: #b4d9c1;
+
+>>>>>>> Stashed changes
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -29,11 +75,13 @@
   --space-5: 20px;
   --space-6: 24px;
   --space-8: 32px;
+
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 12px;
 }
 
+<<<<<<< Updated upstream
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100vh; margin: 0; background: var(--app-bg); }
 button, input, select, textarea { font: inherit; }
@@ -41,3 +89,207 @@ a { color: var(--green-primary); }
 h1, h2, h3, p { margin-top: 0; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 ::selection { background: var(--nav-active); color: var(--green-dark); }
+=======
+/* =========================
+   GLOBAL RESET
+   ========================= */
+
+html {
+  width: 100%;
+  min-width: 320px;
+
+  margin: 0;
+  padding: 0;
+
+  scroll-behavior: smooth;
+
+  background: var(--app-bg);
+}
+
+body {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+
+  margin: 0;
+  padding: 0;
+
+  background: var(--app-bg);
+
+  color: var(--text-primary);
+
+  line-height: 1.5;
+}
+
+/*
+ * Quan trọng:
+ * #root phải full width.
+ * Nếu không landing page rất dễ bị co hoặc lệch giữa màn hình.
+ */
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100vh;
+
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================
+   BOX MODEL
+   ========================= */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* =========================
+   TYPOGRAPHY
+   ========================= */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-top: 0;
+}
+
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* =========================
+   FORM ELEMENTS
+   ========================= */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* =========================
+   LINKS
+   ========================= */
+
+a {
+  color: var(--green-primary);
+}
+
+/*
+ * Landing page tự quản lý màu link của nó
+ * trong LandingPage.css.
+ */
+.landing-page a {
+  color: inherit;
+}
+
+/* =========================
+   TEXT SELECTION
+   ========================= */
+
+::selection {
+  background: var(--nav-active);
+  color: var(--green-dark);
+}
+
+/* =========================
+   ACCESSIBILITY
+   ========================= */
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* =========================
+   SCROLLBAR
+   ========================= */
+
+html {
+  scrollbar-gutter: stable;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #eef3ef;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #b9c8bd;
+  border-radius: 999px;
+  border: 2px solid #eef3ef;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #93a99b;
+}
+
+/* =========================
+   LANDING PAGE OVERRIDES
+   ========================= */
+
+/*
+ * Khi LandingPage render,
+ * background và màu chữ do LandingPage.css tự quản lý.
+ */
+body:has(.landing-page) {
+  background: #071c17;
+}
+
+/*
+ * Tránh App CSS hoặc global CSS giới hạn chiều rộng landing.
+ */
+.landing-page {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+
+  margin: 0;
+  padding: 0;
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+
+@media (max-width: 768px) {
+  :root {
+    font-size: 14px;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+}
+>>>>>>> Stashed changes
