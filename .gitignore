@@ -18,3 +18,9 @@ htmlcov/
 .vs/
 .DS_Store
 Thumbs.db
+
+node_modules/
+dist/
+*.log
+backend/media/
+media/
