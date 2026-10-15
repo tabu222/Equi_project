@@ -1,49 +1,174 @@
-import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import EmptyState from '../../components/common/EmptyState.jsx'
-import StatusBadge from '../../components/common/StatusBadge.jsx'
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { requestProfileChange } from '../../api/horseApi.ts';
+import './OwnerCorrectionRequest.css';
 
-const fields = [['name', 'Tên ngựa'], ['breed', 'Giống'], ['dateOfBirth', 'Ngày sinh'], ['coatColor', 'Màu lông'], ['sex', 'Giới tính']]
-const labels = { Pending: 'Chờ xử lý', Approved: 'Đã chấp nhận', Rejected: 'Bị từ chối' }
+const editableFields = [
+  ['name', 'Tên ngựa', 'text'],
+  ['breed', 'Giống', 'text'],
+  ['dateOfBirth', 'Ngày sinh', 'date'],
+  ['coatColor', 'Màu lông', 'text'],
+  ['sex', 'Giới tính', 'select'],
+  ['sireName', 'Tên ngựa cha', 'text'],
+  ['damName', 'Tên ngựa mẹ', 'text'],
+  ['microchipNumber', 'Số microchip', 'text'],
+  ['registrationNumber', 'Số hộ chiếu', 'text'],
+];
 
-function OwnerCorrectionRequest({ horses, requests = [], onSubmitRequest, currentUser }) {
-  const { horseId } = useParams()
-  const horse = horses.find((item) => String(item.id) === String(horseId) && String(item.ownerUserId) === String(currentUser?.id))
-  const [field, setField] = useState('')
-  const [requestedValue, setRequestedValue] = useState('')
-  const [reason, setReason] = useState('')
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const history = requests.filter((item) => String(item.horseId) === String(horseId))
-  if (!horse) return <main className="page-content"><section className="panel"><h1>Không tìm thấy ngựa</h1><Link to="/owner/horses">Quay lại danh sách ngựa</Link></section></main>
+const statusLabels = {
+  Pending: 'Chờ duyệt',
+  Approved: 'Đã duyệt',
+  Rejected: 'Đã từ chối',
+};
 
-  async function submit(event) {
-    event.preventDefault(); setSaving(true); setError(''); setSubmitted(false)
-    try { await onSubmitRequest({ ownerId: currentUser.id, horseId: horse.id, field, requestedValue, reason }); setSubmitted(true) }
-    catch (submitError) { setError(submitError.message || 'Không thể gửi yêu cầu.') }
-    finally { setSaving(false) }
+function currentFieldValue(horse, field) {
+  const value = horse[field];
+  if (field === 'sex') {
+    return ({ Male: 'MALE', Female: 'FEMALE', Gelding: 'GELDING' })[value] || value || '';
   }
-
-  return <main className="page-content">
-    <div className="breadcrumb"><Link to={`/owner/horses/${horse.id}`}>Hồ sơ và sức khỏe</Link><span aria-hidden="true">/</span><span>Yêu cầu hiệu chỉnh lý lịch</span></div>
-    <header className="page-heading"><div><p className="eyebrow">CHỦ SỞ HỮU NGỰA · HIỆU CHỈNH LÝ LỊCH</p><h1>Yêu cầu hiệu chỉnh lý lịch</h1><p>Gửi thông tin cần sửa để câu lạc bộ xem xét.</p></div></header>
-    <section className="horse-context-card"><div><h2>{horse.name}</h2><p>Mã ngựa #{horse.code || horse.id} · {horse.breed}</p></div><StatusBadge status={horse.profileStatus} type="registration" /></section>
-    <section className="panel form-panel">
-      {submitted && <p className="success-message" role="status">Yêu cầu đã được gửi đến câu lạc bộ.</p>}{error && <p className="error-message" role="alert">{error}</p>}
-      <form onSubmit={submit}>
-        <label className="form-field"><span>Thông tin cần sửa</span><select required value={field} onChange={(event) => setField(event.target.value)}><option value="">Chọn thông tin</option>{fields.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-        {field && <div className="current-value"><span>Giá trị hiện tại</span><strong>{horse[field] || 'Chưa có thông tin'}</strong></div>}
-        <label className="form-field"><span>Giá trị đề nghị</span><input required maxLength={200} value={requestedValue} onChange={(event) => setRequestedValue(event.target.value)} /></label>
-        <label className="form-field"><span>Lý do</span><textarea required rows="3" maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
-        <p className="profile-copy">Tải bằng chứng lên chưa được API hiện tại hỗ trợ.</p>
-        <div className="form-actions"><button className="button" type="submit" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi yêu cầu hiệu chỉnh'}</button><Link className="button button-secondary" to={`/owner/horses/${horse.id}`}>Hủy</Link></div>
-      </form>
-    </section>
-    <section className="panel request-history"><div className="section-title"><h2>Trạng thái yêu cầu</h2></div>
-      {!history.length ? <EmptyState title="Bạn chưa có yêu cầu hiệu chỉnh nào" description="Các yêu cầu đã gửi sẽ hiển thị tại đây." /> : <div className="request-list">{history.map((request) => <article className="request-item" key={request.requestId}><div className="request-item-heading"><div><strong>{fields.find(([key]) => key === request.field)?.[1] || 'Thông tin hồ sơ'}</strong><small>{request.createdAt}</small></div><StatusBadge status={request.status} type="request" label={labels[request.status] || request.status} /></div><p className="request-value">Giá trị đề nghị: {request.requestedValue}</p>{request.status === 'Rejected' && request.rejectionReason && <p>{request.rejectionReason}</p>}</article>)}</div>}
-    </section>
-  </main>
+  return value == null ? '' : String(value).slice(0, field === 'dateOfBirth' ? 10 : undefined);
 }
 
-export default OwnerCorrectionRequest
+export default function OwnerCorrectionRequest({ horse, requests = [], onSubmitted }) {
+  const { horseId } = useParams();
+  const navigate = useNavigate();
+  const [field, setField] = useState(editableFields[0][0]);
+  const [requestedValue, setRequestedValue] = useState('');
+  const [reason, setReason] = useState('');
+  const [evidenceDocumentId, setEvidenceDocumentId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  if (!horse) return <p className="correction-page__error">Không tìm thấy hồ sơ ngựa.</p>;
+
+  const isApproved = horse.profileStatus === 'APPROVED';
+  const pendingRequest = requests.some((request) => request.status === 'Pending');
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setSuccess('');
+    setSubmitting(true);
+    try {
+      const saved = await requestProfileChange(
+        horseId,
+        field,
+        requestedValue,
+        reason,
+        evidenceDocumentId ? Number(evidenceDocumentId) : undefined,
+      );
+      onSubmitted?.(saved);
+      setSuccess('Yêu cầu sửa hồ sơ đã được gửi.');
+      setRequestedValue('');
+      setReason('');
+      setEvidenceDocumentId('');
+    } catch (requestError) {
+      setError(requestError.message || 'Không thể gửi yêu cầu sửa hồ sơ.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const selectedField = editableFields.find(([key]) => key === field);
+
+  return (
+    <section className="correction-page">
+      <header className="correction-page__header">
+        <button type="button" className="correction-page__back" onClick={() => navigate(-1)}>
+          ← Quay lại
+        </button>
+        <div>
+          <p className="correction-page__eyebrow">Hồ sơ ngựa</p>
+          <h1>Yêu cầu sửa hồ sơ</h1>
+          <p className="correction-page__subtitle">
+            Gửi yêu cầu thay đổi thông tin của {horse.name}. Quản lý cần duyệt trước khi hồ sơ được cập nhật.
+          </p>
+        </div>
+      </header>
+
+      {!isApproved && (
+        <p className="correction-page__notice">
+          Chỉ có thể yêu cầu sửa hồ sơ ngựa đã được tiếp nhận.
+        </p>
+      )}
+      {pendingRequest && (
+        <p className="correction-page__notice">
+          Ngựa này đã có yêu cầu đang chờ duyệt.
+        </p>
+      )}
+      {error && <p className="correction-page__error" role="alert">{error}</p>}
+      {success && <p className="correction-page__success" role="status">{success}</p>}
+
+      <form className="correction-form" onSubmit={handleSubmit}>
+        <label>
+          Trường cần thay đổi
+          <select value={field} onChange={(event) => setField(event.target.value)}>
+            {editableFields.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+        </label>
+        <label>
+          Giá trị hiện tại
+          <input readOnly value={currentFieldValue(horse, field)} />
+        </label>
+        <label>
+          Giá trị đề nghị
+          {selectedField?.[2] === 'select' ? (
+            <select required value={requestedValue} onChange={(event) => setRequestedValue(event.target.value)}>
+              <option value="">Chọn giới tính</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="GELDING">Gelding</option>
+            </select>
+          ) : (
+            <input
+              required
+              type={selectedField?.[2] || 'text'}
+              value={requestedValue}
+              onChange={(event) => setRequestedValue(event.target.value)}
+            />
+          )}
+        </label>
+        <label>
+          Lý do thay đổi
+          <textarea required rows="4" value={reason} onChange={(event) => setReason(event.target.value)} />
+        </label>
+        <label>
+          Mã tài liệu bằng chứng (không bắt buộc)
+          <input
+            type="number"
+            min="1"
+            value={evidenceDocumentId}
+            onChange={(event) => setEvidenceDocumentId(event.target.value)}
+          />
+        </label>
+        <div className="correction-form__actions">
+          <Link to={`/owner/horses/${horseId}`}>Hủy</Link>
+          <button type="submit" disabled={!isApproved || pendingRequest || submitting}>
+            {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+          </button>
+        </div>
+      </form>
+
+      <section className="correction-history">
+        <h2>Lịch sử yêu cầu</h2>
+        {!requests.length ? (
+          <p>Chưa có yêu cầu sửa hồ sơ.</p>
+        ) : requests.map((request) => (
+          <article className="correction-history__item" key={request.requestId}>
+            <div className="correction-history__top">
+              <strong>{editableFields.find(([key]) => key === request.field)?.[1] || 'Trường hồ sơ'}</strong>
+              <span className={`correction-history__status correction-history__status--${request.status.toLowerCase()}`}>
+                {statusLabels[request.status] || request.status}
+              </span>
+            </div>
+            <p>Giá trị đề nghị: {request.requestedValue || '—'}</p>
+            <p>Lý do: {request.reason || '—'}</p>
+            {request.rejectionReason && <p>Ghi chú xử lý: {request.rejectionReason}</p>}
+            {request.createdAt && <small>{new Date(request.createdAt).toLocaleString()}</small>}
+          </article>
+        ))}
+      </section>
+    </section>
+  );
+}

@@ -7,12 +7,13 @@ function OwnerHorses({ horses, currentUser, owners = [] }) {
   const currentOwnerId = currentUser?.id || ''
   const ownedHorses = horses.filter((horse) => String(horse.ownerUserId) === String(currentOwnerId))
   const owner = owners.find((item) => String(item.ownerId) === String(currentOwnerId)) || currentUser
+  const canRegister = currentUser?.permissions?.includes('HORSE_REGISTER')
 
   return (
     <main className="page-content">
       <nav className="breadcrumb" aria-label="Đường dẫn">Ngựa của tôi</nav>
-      <header className="page-heading"><div><p className="eyebrow">CHỦ SỞ HỮU NGỰA · {owner?.fullName || 'CHỦ SỞ HỮU'}</p><h1>Ngựa của tôi</h1><p>Theo dõi hồ sơ và tình trạng sức khỏe của những ngựa thuộc sở hữu của bạn.</p></div></header>
-      {ownedHorses.length === 0 ? <EmptyState title="Bạn chưa có ngựa nào trong hệ thống" description="Các ngựa thuộc quyền sở hữu của bạn sẽ xuất hiện tại đây." /> : (
+      <header className="page-heading"><div><p className="eyebrow">CHỦ SỞ HỮU NGỰA · {owner?.fullName || 'CHỦ SỞ HỮU'}</p><h1>Ngựa của tôi</h1><p>Theo dõi hồ sơ và tình trạng sức khỏe của những ngựa thuộc sở hữu của bạn.</p></div>{canRegister && <Link className="button" to="/owner/horses/new">Đăng ký ngựa</Link>}</header>
+      {ownedHorses.length === 0 ? <section className="panel"><EmptyState title="Bạn chưa có ngựa nào trong hệ thống" description="Tạo hồ sơ nháp để bắt đầu đăng ký ngựa." /></section> : (
         <div className="card-grid">
           {ownedHorses.map((horse) => <article className="panel horse-card" key={horse.id}>
             <span className="profile-id">Mã ngựa #{horse.code || horse.id}</span><h2>{horse.name}</h2><p>{horse.breed} · {formatHorseGender(horse.sex)}</p>

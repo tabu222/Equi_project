@@ -8,7 +8,7 @@ import HorseDocuments from './HorseDocuments.jsx'
 import HorseHealthSummary from './HorseHealthSummary.jsx'
 import { formatHorseGender } from './horseLabels.js'
 
-function HorseProfile({ horse, owner, documents, healthContent }) {
+function HorseProfile({ horse, owner, documents, healthContent, registrationLabel }) {
   const [activeTab, setActiveTab] = useState('profile')
 
   function handleTabKeyDown(event) {
@@ -33,7 +33,7 @@ function HorseProfile({ horse, owner, documents, healthContent }) {
       <header className="profile-header panel">
         <div><span className="profile-id">Mã ngựa #{horse.id}</span><h1>{horse.name || 'Chưa có tên'}</h1><p>{[horse.breed, formatHorseGender(horse.sex)].filter(Boolean).join(' · ')}</p></div>
         <div className="profile-statuses">
-          <div><span>Trạng thái hồ sơ</span><StatusBadge status={horse.profileStatus} type="registration" /></div>
+          <div><span>Trạng thái hồ sơ</span><StatusBadge status={horse.profileStatus} label={registrationLabel} type="registration" /></div>
           <div><span>Sức khỏe</span><StatusBadge status={horse.healthStatus} type="health" /></div>
         </div>
       </header>
