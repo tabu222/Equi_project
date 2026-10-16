@@ -1,25 +1,23 @@
-import StatusBadge from '../common/StatusBadge.jsx'
 import { formatHorseGender } from './horseLabels.js'
+import { formatHorseDate, valueOrMissing } from './horseDisplay.js'
 
 function Value({ label, children }) {
-  return <div className="info-item"><span>{label}</span><strong>{children ?? '—'}</strong></div>
+  return <div className="info-item"><span>{label}</span><strong>{children ?? 'Chưa cập nhật'}</strong></div>
 }
 
 function HorseBasicInfo({ horse }) {
   return (
-    <section className="profile-section">
-      <div className="section-title"><h2>Thông tin lý lịch</h2></div>
+    <section className="profile-section profile-info-card">
+      <div className="section-title"><h2>Thông tin nhận diện</h2></div>
       <div className="info-grid">
-        <Value label="Mã ngựa">{horse.code || horse.id}</Value>
-        <Value label="Tên ngựa">{horse.name}</Value>
-        <Value label="Giống">{horse.breed}</Value>
-        <Value label="Ngày sinh">{horse.dateOfBirth}</Value>
-        <Value label="Giới tính">{formatHorseGender(horse.sex)}</Value>
-        <Value label="Màu lông">{horse.coatColor}</Value>
-        <Value label="Trạng thái hồ sơ"><StatusBadge status={horse.profileStatus} type="registration" /></Value>
-        <Value label="Mã câu lạc bộ">{horse.clubId}</Value>
-        <Value label="Ngày tạo">{horse.createdAt}</Value>
-        <Value label="Cập nhật lần cuối">{horse.updatedAt}</Value>
+        <Value label="Mã ngựa">{valueOrMissing(horse.code)}</Value>
+        <Value label="Tên ngựa">{valueOrMissing(horse.name)}</Value>
+        <Value label="Giống">{valueOrMissing(horse.breed)}</Value>
+        <Value label="Ngày sinh">{formatHorseDate(horse.dateOfBirth)}</Value>
+        <Value label="Giới tính">{horse.sex === 'UNKNOWN' ? 'Chưa cập nhật' : formatHorseGender(horse.sex)}</Value>
+        <Value label="Màu lông">{valueOrMissing(horse.coatColor)}</Value>
+        <Value label="Microchip">{valueOrMissing(horse.microchipNumber)}</Value>
+        <Value label="Hộ chiếu / đăng ký">{valueOrMissing(horse.registrationNumber)}</Value>
       </div>
     </section>
   )

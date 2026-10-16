@@ -1,4 +1,4 @@
-export type UserRole = 'CLUB_MANAGER' | 'OWNER' | 'VET';
+export type UserRole = 'CLUB_MANAGER' | 'OWNER' | 'VET' | 'HEAD_TRAINER' | 'TRAINER' | 'WORK_RIDER' | 'GROOM' | 'UNSUPPORTED';
 export type ProfileStatus = 'DRAFT' | 'SUBMITTED' | 'PENDING_EXAM' | 'APPROVED' | 'REJECTED' | 'ARCHIVED' | 'UNKNOWN';
 export type HealthStatus = 'NOT_ASSESSED' | 'ELIGIBLE' | 'MONITORING' | 'INJURED' | 'RECOVERING' | 'ISOLATION';
 export type Sex = 'MALE' | 'FEMALE' | 'GELDING' | 'UNKNOWN';

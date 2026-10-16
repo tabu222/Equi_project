@@ -5,6 +5,8 @@
 .brand strong { display: block; font-size: 19px; font-weight: 750; letter-spacing: .035em; }
 .brand-mark { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid #a9c6b2; border-radius: var(--radius-sm); color: var(--green-primary); font-size: 19px; font-weight: 750; }
 .brand small { display: block; margin-top: 3px; color: var(--green-muted); font-size: 9px; font-weight: 650; letter-spacing: .08em; }
+.brand .brand-mark { flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; background: #fff; }
+.brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .sidebar-label { margin: 34px 10px 9px; color: var(--green-muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .side-nav { display: grid; gap: 4px; }
 .side-nav a { display: flex; min-height: 42px; align-items: center; gap: 10px; padding: 0 11px; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--green-muted); text-decoration: none; font-size: 13px; font-weight: 450; }
@@ -649,5 +651,763 @@
   .pagination {
     justify-content: center;
     flex-wrap: wrap;
+  }
+}
+
+.owner-horse-form-panel form {
+  gap: 18px;
+}
+.owner-horse-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.owner-horse-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+.owner-horse-card .section-title h2 {
+  margin-bottom: 5px;
+}
+.owner-horse-card .section-title p,
+.form-help,
+.owner-health-unavailable > p {
+  margin: 0;
+  color: var(--green-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.owner-horse-card .profile-section {
+  padding: 0;
+  border: 0;
+}
+.owner-horse-card .profile-section .section-title h2 {
+  margin-bottom: 10px;
+}
+.owner-account-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.owner-account-summary > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+.owner-account-summary span {
+  color: var(--green-muted);
+  font-size: 11px;
+}
+.owner-account-summary strong {
+  color: var(--green-dark);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.file-drop-area {
+  display: grid;
+  gap: 7px;
+  padding: 18px;
+  border: 1px dashed #91b69d;
+  border-radius: var(--radius-md);
+  background: #f5faf6;
+  color: var(--green-dark);
+  cursor: pointer;
+}
+.file-drop-area > span {
+  color: var(--green-muted);
+  font-size: 12px;
+}
+.file-drop-area input,
+.file-picker-button input {
+  width: 100%;
+  min-height: 36px;
+  font-size: 12px;
+}
+.file-picker-button {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.pending-upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+.pending-upload-preview,
+.horse-document-thumbnail img {
+  width: 76px;
+  height: 64px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  object-fit: cover;
+  background: #e8eee9;
+}
+.pending-upload-copy,
+.document-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.pending-upload-copy strong {
+  color: var(--green-dark);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.pending-upload-copy span,
+.pending-upload-copy small {
+  color: var(--green-muted);
+  font-size: 11px;
+}
+.pending-upload-copy .field-error {
+  color: #78342f;
+}
+.pending-upload-actions,
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.pending-upload-actions .button-secondary,
+.document-actions .button-secondary {
+  padding: 0 10px;
+  cursor: pointer;
+}
+.document-item {
+  flex-wrap: wrap;
+}
+.document-copy {
+  align-content: center;
+}
+.document-actions {
+  margin-left: auto;
+}
+.document-actions button:disabled {
+  cursor: wait;
+}
+.horse-document-thumbnail {
+  flex: 0 0 auto;
+}
+.horse-document-thumbnail img {
+  display: block;
+}
+.document-delete {
+  color: #8b352d;
+}
+.owner-health-unavailable {
+  border-style: dashed;
+  background: #f7f9f7;
+}
+
+@media (max-width: 760px) {
+  .owner-horse-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .owner-account-summary {
+    grid-template-columns: 1fr;
+  }
+  .pending-upload {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .pending-upload-actions,
+  .document-actions {
+    width: 100%;
+  }
+}
+
+/* Horse dashboards and shared profile */
+.owner-horse-list-page,
+.horse-list-page,
+.vet-exam-queue-page {
+  min-width: 0;
+}
+.horse-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+.horse-stat-item {
+  display: grid;
+  min-width: 120px;
+  gap: 4px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.horse-stat-item span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.horse-stat-item strong {
+  color: var(--green-dark);
+  font-size: 20px;
+  line-height: 1.1;
+}
+.horse-stat-total {
+  border-color: #bfd7c5;
+  background: #f1f7f2;
+}
+.horse-stat-total strong {
+  color: var(--green-primary);
+}
+.horse-stat-strip > p {
+  margin: 0;
+  align-self: center;
+  color: var(--text-secondary);
+}
+.owner-horse-filters,
+.vet-queue-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(180px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+.owner-horse-filters .search-field,
+.vet-queue-filters .search-field {
+  min-width: 0;
+}
+.owner-horse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  align-items: stretch;
+  gap: 18px;
+}
+.owner-horse-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 2px 8px rgb(23 58 42 / 5%);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.owner-horse-card:hover {
+  transform: translateY(-2px);
+  border-color: #b3cdb9;
+  box-shadow: 0 8px 20px rgb(23 58 42 / 9%);
+}
+.horse-avatar {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  background: #edf3ee;
+  color: #718378;
+}
+.horse-avatar svg {
+  width: 46px;
+  height: 46px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.horse-avatar span {
+  color: #617468;
+  font-size: 11px;
+  font-weight: 600;
+}
+.horse-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.horse-avatar-card {
+  width: 100%;
+  height: 156px;
+}
+.horse-avatar-card svg {
+  width: 56px;
+  height: 56px;
+}
+.horse-avatar-card span {
+  font-size: 12px;
+}
+.owner-horse-card-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 16px;
+}
+.owner-horse-card-identity {
+  min-width: 0;
+}
+.owner-horse-card-identity h2 {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 27px;
+  margin: 0 0 5px;
+  color: var(--green-dark);
+  font-size: 18px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.owner-horse-card .profile-id {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.owner-horse-facts {
+  min-height: 42px;
+  margin: 11px 0 14px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.owner-horse-facts span {
+  margin-inline: 3px;
+  color: #8a9a8f;
+}
+.card-statuses {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 0 12px;
+  margin: 0 0 12px;
+  border-top: 1px solid #edf1ee;
+}
+.card-statuses > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.card-statuses dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.card-statuses dd {
+  margin: 0;
+}
+.owner-horse-view-link {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+  margin-top: auto;
+  border-top: 1px solid #edf1ee;
+  color: var(--green-primary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.owner-horse-view-link:hover {
+  color: #105b3a;
+  text-decoration: underline;
+}
+.owner-horse-view-link span {
+  font-size: 17px;
+}
+.owner-horse-empty {
+  display: grid;
+  justify-items: center;
+}
+.owner-horse-empty .clear-filter-button {
+  margin-top: 8px;
+}
+.horse-avatar-small {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #e1e9e3;
+  border-radius: 8px;
+}
+.horse-avatar-small svg {
+  width: 24px;
+  height: 24px;
+}
+.horse-avatar-small span {
+  font-size: 7px;
+}
+.horse-table-identity {
+  display: flex;
+  min-width: 180px;
+  align-items: center;
+  gap: 10px;
+}
+.horse-table-identity > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+.horse-table-identity strong {
+  max-width: 210px;
+  overflow: hidden;
+  color: var(--green-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.horse-table-identity small,
+.horse-table td small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.horse-list-page .filter-row {
+  grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(150px, 1fr)) auto auto;
+}
+.horse-list-page .horse-table {
+  min-width: 990px;
+}
+.vet-queue-filters {
+  grid-template-columns: minmax(240px, 1.5fr) minmax(200px, 1fr) auto;
+}
+.vet-queue-table {
+  min-width: 980px;
+}
+.vet-queue-action {
+  min-height: 36px;
+  border-color: #b8d1bf;
+  background: #f5faf6;
+  font-size: 12px;
+  font-weight: 700;
+}
+.vet-queue-action:hover {
+  background: #e7f1ea;
+}
+.profile-header {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px;
+}
+.horse-avatar-profile {
+  width: 88px;
+  height: 88px;
+  border: 1px solid #dce7de;
+  border-radius: var(--radius-md);
+}
+.horse-avatar-profile svg {
+  width: 40px;
+  height: 40px;
+}
+.horse-avatar-profile span {
+  font-size: 9px;
+}
+.profile-identity {
+  min-width: 0;
+}
+.profile-identity h1 {
+  overflow-wrap: anywhere;
+}
+.profile-id {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.profile-statuses > div > span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.profile-tabs {
+  overflow-x: auto;
+  gap: 4px;
+  margin-top: 16px;
+}
+.profile-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding-inline: 16px;
+  font-size: 14px;
+}
+.profile-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  align-items: start;
+  gap: 16px;
+  padding-top: 12px;
+}
+.profile-primary-column,
+.profile-secondary-column {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+.profile-info-card {
+  padding: 18px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.profile-info-card .section-title h2 {
+  font-size: 18px;
+}
+.profile-info-card .info-item {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.profile-info-card .info-grid {
+  gap: 14px 20px;
+}
+.profile-secondary-column .info-grid {
+  grid-template-columns: 1fr;
+}
+.profile-info-card .section-title:not(:first-child) {
+  margin-top: 20px;
+}
+.profile-info-card .info-item > span {
+  font-size: 12px;
+}
+.profile-info-card .info-item strong {
+  font-size: 14px;
+}
+.profile-data-warning {
+  padding: 10px 12px;
+  border: 1px solid #ead8aa;
+  border-radius: var(--radius-md);
+  background: #fff9e9;
+  color: #6e541c;
+  font-size: 13px;
+}
+.health-tab-panel {
+  padding-top: 12px;
+}
+.health-tab-panel > .profile-section {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.health-summary-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.health-summary-grid .info-item {
+  padding: 12px;
+  border: 1px solid #edf1ee;
+  background: #fbfcfb;
+}
+.health-history {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.health-record-list {
+  display: grid;
+  gap: 10px;
+}
+.health-record-item {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.health-record-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.health-record-heading strong {
+  color: var(--green-dark);
+  font-size: 14px;
+}
+.health-record-item p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.horse-media-library {
+  display: grid;
+  gap: 16px;
+  padding-top: 12px;
+}
+.horse-media-library .profile-info-card {
+  min-width: 0;
+}
+.horse-image-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.horse-gallery-item {
+  min-width: 0;
+  margin: 0;
+}
+.horse-gallery-item a,
+.horse-gallery-placeholder {
+  display: grid;
+  height: 160px;
+  overflow: hidden;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: #edf3ee;
+}
+.horse-gallery-item a:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.horse-gallery-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.horse-gallery-placeholder {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.horse-gallery-item figcaption {
+  padding-top: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.horse-documents-panel {
+  padding-top: 12px;
+}
+.status-health-eligible,
+.status-registration-approved,
+.status-exam-completed,
+.status-medical-signed {
+  border-color: #c8e2ce;
+  background: var(--success-bg);
+  color: #225d35;
+}
+.status-health-monitoring,
+.status-registration-submitted,
+.status-registration-pendingexam,
+.status-registration-pending_exam,
+.status-exam-pending,
+.status-exam-draft {
+  border-color: #ebd9a8;
+  background: var(--warning-bg);
+  color: #73520d;
+}
+.status-health-isolation {
+  border-color: #cbd8e5;
+  background: #eaf1f8;
+  color: #34587e;
+}
+.status-health-not_assessed,
+.status-exam-not_started {
+  border-color: #dfe6e1;
+  background: #f2f5f3;
+  color: #56675c;
+}
+.status-registration-archived {
+  border-color: #d6ded9;
+  background: #edf0ef;
+  color: #46564b;
+}
+
+@media (max-width: 1080px) {
+  .horse-list-page .filter-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .horse-list-page .filter-row .search-field {
+    grid-column: 1 / -1;
+  }
+  .owner-horse-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .profile-overview-grid {
+    grid-template-columns: minmax(0, 1.6fr) minmax(230px, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .owner-horse-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .profile-overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-secondary-column .info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .horse-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .horse-stat-item {
+    min-width: 0;
+  }
+  .owner-horse-filters,
+  .vet-queue-filters,
+  .horse-list-page .filter-row {
+    grid-template-columns: 1fr;
+  }
+  .owner-horse-filters .search-field,
+  .horse-list-page .filter-row .search-field {
+    grid-column: auto;
+  }
+  .owner-horse-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-header {
+    grid-template-columns: 68px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+  }
+  .horse-avatar-profile {
+    width: 68px;
+    height: 68px;
+  }
+  .profile-statuses {
+    grid-column: 1 / -1;
+  }
+  .profile-overview-grid {
+    gap: 12px;
+  }
+  .profile-info-card {
+    padding: 16px;
+  }
+  .profile-secondary-column .info-grid,
+  .health-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .horse-image-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .horse-gallery-item a,
+  .horse-gallery-placeholder {
+    height: 140px;
+  }
+}
+@media (max-width: 420px) {
+  .owner-horse-card-body {
+    padding: 14px;
+  }
+  .horse-image-gallery {
+    grid-template-columns: 1fr;
   }
 }

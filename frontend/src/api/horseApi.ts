@@ -1,7 +1,28 @@
 import type { Horse } from '../types';
-import { ApiError, apiGet, apiPatch, apiPost } from './apiClient.ts';
+import {
+  ApiError,
+  apiDelete,
+  apiGet,
+  apiGetBlob,
+  apiGetPublic,
+  apiPatch,
+  apiPost,
+  apiPostForm,
+} from './apiClient.ts';
 
 type ApiRecord = Record<string, unknown>;
+
+const horsesWithPendingDocumentUploads = new Set<string>();
+const horsesWithActiveDocumentUploads = new Set<string>();
+
+export function setHorseDocumentUploadsPending(horseId: string, pending: boolean): void {
+  if (pending) horsesWithPendingDocumentUploads.add(String(horseId));
+  else horsesWithPendingDocumentUploads.delete(String(horseId));
+}
+
+export function clearPendingHorseDocumentUploads(): void {
+  horsesWithPendingDocumentUploads.clear();
+}
 
 function requiredId(record: ApiRecord, field: string): string {
   const value = record[field];
@@ -43,7 +64,7 @@ export interface Club {
 }
 
 export async function getClubs(): Promise<Club[]> {
-  return listResponse<ApiRecord>(await apiGet<unknown>('/clubs')).map((club) => {
+  return listResponse<ApiRecord>(await apiGetPublic<unknown>('/clubs')).map((club) => {
     const name = club.ClubName;
     if (typeof name !== 'string' || !name.trim()) {
       throw new ApiError('API trả câu lạc bộ thiếu ClubName.');
@@ -138,6 +159,7 @@ export interface HorseProfileInput {
   sireName: string;
   damName: string;
   clubId?: string;
+  ownerUserId?: string;
 }
 
 function toProfilePayload(input: Partial<HorseProfileInput>, create = false): ApiRecord {
@@ -157,6 +179,7 @@ function toProfilePayload(input: Partial<HorseProfileInput>, create = false): Ap
     }
   }
   if (create && input.clubId) payload.ClubID = Number(input.clubId);
+  if (create && input.ownerUserId) payload.OwnerID = Number(input.ownerUserId);
   const passport = payload.PassportNumber;
   if (typeof passport === 'string') payload.PassportNumber = passport.trim().toUpperCase();
   const microchip = payload.MicrochipNumber;
@@ -173,6 +196,10 @@ export async function updateHorse(horseId: string, input: Partial<HorseProfileIn
 }
 
 export async function submitHorse(horseId: string): Promise<Horse> {
+  if (horsesWithPendingDocumentUploads.has(String(horseId))
+    || horsesWithActiveDocumentUploads.has(String(horseId))) {
+    throw new ApiError('Còn file chưa được lưu hoặc đang tải lên. Hãy hoàn tất tải file trước khi gửi đăng ký.');
+  }
   return normalizeHorse(await apiPost<unknown>(`/horses/${encodeURIComponent(horseId)}/submit`, {}));
 }
 
@@ -201,6 +228,14 @@ export interface HorseDocument {
   documentType: string;
   uploadedAt: string;
   fileUrl: string;
+  uploadedById?: string;
+  isUploadedFile: boolean;
+  isVisibleToOwner: boolean;
+  contentType?: string;
+  isPrimary: boolean;
+  isRetired: boolean;
+  isProfileImage: boolean;
+  replacesDocumentId?: string;
 }
 
 export interface RegistrationHistory {
@@ -221,6 +256,42 @@ export interface ProfileChangeRequest {
   reason: string;
   createdAt: string;
   rejectionReason: string;
+  changes: Array<{ Field: string; OldValue: string | null; NewValue: string | null }>;
+  attachments: ChangeAttachment[];
+  evidenceDocuments: ProposalDocument[];
+  removedImages: ProposalDocument[];
+  avatarDocument?: ProposalDocument;
+  currentAvatar?: ProposalDocument;
+  reviewedAt?: string;
+  reviewedByName?: string;
+}
+
+export interface ProposalDocument {
+  DocumentID: number;
+  DocumentName: string;
+  DocumentType: string;
+  FileUrl: string;
+  IsUploadedFile: boolean;
+}
+
+export interface ChangeAttachment {
+  Purpose: 'avatar' | 'image' | 'evidence' | 'add' | 'replace';
+  DocumentName: string;
+  DocumentType: string;
+  FileUrl?: string;
+  OriginalName?: string;
+  Size?: number;
+  ContentType?: string;
+  Note?: string;
+  ReplacesDocumentID?: number;
+  CurrentDocument?: ProposalDocument;
+}
+
+export interface ChangeRequestOptions {
+  MaxFileMB: number;
+  MaxFiles: number;
+  DocumentTypes: string[];
+  ClearableFields: string[];
 }
 
 export interface AvailableStall {
@@ -228,15 +299,59 @@ export interface AvailableStall {
   stallNumber: string;
 }
 
-export async function getHorseDocuments(horseId: string): Promise<HorseDocument[]> {
-  const documents = listResponse<ApiRecord>(await apiGet<unknown>(`/horses/${encodeURIComponent(horseId)}/documents`));
-  return documents.map((document) => ({
+function mapHorseDocument(document: ApiRecord): HorseDocument {
+  return {
     documentId: requiredId(document, 'DocumentID'),
     documentName: typeof document.DocumentName === 'string' ? document.DocumentName : '',
     documentType: typeof document.DocumentType === 'string' ? document.DocumentType : '',
     uploadedAt: typeof document.UploadedAt === 'string' ? document.UploadedAt : '',
     fileUrl: typeof document.FileUrl === 'string' ? document.FileUrl : '',
-  }));
+    uploadedById: document.UploadedBy == null ? undefined : String(document.UploadedBy),
+    isUploadedFile: document.IsUploadedFile === true,
+    isVisibleToOwner: document.IsVisibleToOwner !== false,
+    contentType: typeof document.ContentType === 'string' ? document.ContentType : undefined,
+    isPrimary: document.IsPrimary === true,
+    isRetired: document.IsRetired === true,
+    isProfileImage: document.IsProfileImage !== false,
+    replacesDocumentId: document.ReplacesDocumentID == null ? undefined : String(document.ReplacesDocumentID),
+  };
+}
+
+export async function getHorseDocuments(horseId: string): Promise<HorseDocument[]> {
+  const documents = listResponse<ApiRecord>(await apiGet<unknown>(`/horses/${encodeURIComponent(horseId)}/documents`));
+  return documents.map(mapHorseDocument);
+}
+
+export async function uploadHorseDocument(
+  horseId: string,
+  file: File,
+  documentType: string,
+  documentName: string,
+): Promise<HorseDocument> {
+  const payload = new FormData();
+  payload.append('File', file, file.name);
+  payload.append('DocumentType', documentType);
+  payload.append('DocumentName', documentName);
+  const id = String(horseId);
+  horsesWithActiveDocumentUploads.add(id);
+  try {
+    const response = await apiPostForm<unknown>(`/horses/${encodeURIComponent(id)}/documents`, payload);
+    if (!response || typeof response !== 'object') {
+      throw new ApiError('API trả tài liệu vừa tải lên không đúng định dạng.');
+    }
+    return mapHorseDocument(response as ApiRecord);
+  } finally {
+    horsesWithActiveDocumentUploads.delete(id);
+  }
+}
+
+export async function getHorseDocumentFile(documentId: string, download = false): Promise<Blob> {
+  const suffix = download ? '?download=1' : '';
+  return apiGetBlob(`/horse-documents/${encodeURIComponent(documentId)}/file${suffix}`);
+}
+
+export async function deleteHorseDocument(documentId: string): Promise<void> {
+  await apiDelete<void>(`/horse-documents/${encodeURIComponent(documentId)}`);
 }
 
 export async function getRegistrationHistory(horseId: string): Promise<RegistrationHistory[]> {
@@ -289,7 +404,45 @@ function mapProfileChangeRequest(value: unknown): ProfileChangeRequest {
     reason: typeof changes.Reason === 'string' ? changes.Reason : '',
     createdAt: typeof record.RequestedAt === 'string' ? record.RequestedAt : '',
     rejectionReason: typeof record.ReviewNote === 'string' ? record.ReviewNote : '',
+    changes: items as ProfileChangeRequest['changes'],
+    attachments: (Array.isArray(changes.Attachments) ? changes.Attachments : []) as ChangeAttachment[],
+    evidenceDocuments: (Array.isArray(changes.EvidenceDocuments) ? changes.EvidenceDocuments : []) as ProposalDocument[],
+    removedImages: (Array.isArray(changes.RemovedImages) ? changes.RemovedImages : []) as ProposalDocument[],
+    avatarDocument: changes.AvatarDocument as ProposalDocument | undefined,
+    currentAvatar: changes.CurrentAvatar as ProposalDocument | undefined,
+    reviewedAt: typeof record.ReviewedAt === 'string' ? record.ReviewedAt : undefined,
+    reviewedByName: typeof record.ReviewedByName === 'string' ? record.ReviewedByName : undefined,
   };
+}
+
+export function getChangeRequestOptions(horseId: string): Promise<ChangeRequestOptions> {
+  return apiGet(`/horses/${encodeURIComponent(horseId)}/profile-change-options`);
+}
+
+export async function submitProfileProposal(
+  horseId: string,
+  input: { Changes: Record<string, string | null>; Reason: string; AvatarDocumentID?: number;
+    RemoveImageIDs: number[]; EvidenceDocumentIDs: number[] },
+  attachments: Array<ChangeAttachment & { file: File }>,
+): Promise<ProfileChangeRequest> {
+  const form = new FormData();
+  const metadata = attachments.map(({ file, ...item }, index) => {
+    const key = `file${index}`;
+    form.append(key, file, file.name);
+    return { ...item, FileKey: key };
+  });
+  form.append('Payload', JSON.stringify({ ...input, Attachments: metadata }));
+  return mapProfileChangeRequest(await apiPostForm(
+    `/horses/${encodeURIComponent(horseId)}/profile-change-requests`, form,
+  ));
+}
+
+export function getProposalFile(fileUrl: string, download = false): Promise<Blob> {
+  // Only authenticated local API routes are allowed; never send a token to a document URL.
+  if (!/^\/api\/(horse-documents\/[0-9]+\/file|profile-change-requests\/[0-9]+\/attachments\/[0-9]+)$/.test(fileUrl)) {
+    throw new ApiError('Đường dẫn file không được hỗ trợ.');
+  }
+  return apiGetBlob(fileUrl.slice(4) + (download ? '?download=1' : ''));
 }
 
 export async function getProfileChangeRequests(horseId?: string): Promise<ProfileChangeRequest[]> {
@@ -332,6 +485,10 @@ export async function reviewProfileChangeRequest(
   return mapProfileChangeRequest(result);
 }
 
+export async function withdrawProfileProposal(requestId: string): Promise<ProfileChangeRequest> {
+  return mapProfileChangeRequest(await apiPost(`/profile-change-requests/${encodeURIComponent(requestId)}/withdraw`, {}));
+}
+
 export interface ExaminationInput {
   examDate: string;
   weightKg?: number;
@@ -362,7 +519,7 @@ export interface PendingInitialExam {
   horse: Horse;
   requestId: string;
   requestDate: string;
-  waitingHours: number;
+  waitingHours?: number;
   draftMedicalRecordId?: string;
   draftVetId?: string;
 }
@@ -402,7 +559,9 @@ export async function getPendingInitialExams(): Promise<PendingInitialExam[]> {
     horse: { ...normalizeHorse(record), initialExamSigned: false },
     requestId: requiredId(record, 'RegistrationRequestID'),
     requestDate: typeof record.RequestDate === 'string' ? record.RequestDate : '',
-    waitingHours: typeof record.WaitingHours === 'number' ? record.WaitingHours : 0,
+    waitingHours: typeof record.WaitingHours === 'number' && Number.isFinite(record.WaitingHours)
+      ? record.WaitingHours
+      : undefined,
     draftMedicalRecordId: record.DraftMedicalRecordID == null ? undefined : String(record.DraftMedicalRecordID),
     draftVetId: record.DraftVetID == null ? undefined : String(record.DraftVetID),
   }));

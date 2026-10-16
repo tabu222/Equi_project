@@ -5,7 +5,8 @@ import {
   useState,
 } from 'react'
 import {
-  BrowserRouter,
+  createBrowserRouter,
+  RouterProvider,
   Link,
   NavLink,
   Navigate,
@@ -16,14 +17,17 @@ import {
 } from 'react-router-dom'
 
 import {
+  ApiError,
   clearSession,
   getAccessToken,
 } from './api/apiClient.ts'
 
 import {
   archiveHorse,
+  clearPendingHorseDocumentUploads,
   completeHorseIntake,
   getAvailableStalls,
+  getClubs,
   getHorseById,
   getHorseDocuments,
   getHorses,
@@ -51,6 +55,8 @@ import CompleteIntake from './pages/manager/CompleteIntake.jsx'
 import ProfileChangeRequests from './pages/manager/ProfileChangeRequests.jsx'
 
 import OwnerHorses from './pages/owner/OwnerHorses.jsx'
+import OwnerHorseForm from './pages/owner/OwnerHorseForm.jsx'
+import LoginScreen from './components/layout/LoginScreen.jsx'
 import OwnerCorrectionRequest from './pages/owner/OwnerCorrectionRequest.jsx'
 
 import HorsesNeedingExam from './pages/vet/HorsesNeedingExam.jsx'
@@ -65,10 +71,11 @@ import {
 
 import StatusBadge from './components/common/StatusBadge.jsx'
 import LandingPage from './pages/landing/LandingPage.jsx'
+import { formatHorseDateTime, valueOrMissing } from './components/horse/horseDisplay.js'
 
 import './App.css'
 
-const roleMap = { CLUB_MANAGER: 'manager', HORSE_OWNER: 'owner', OWNER: 'owner', VETERINARIAN: 'vet', VET: 'vet' }
+const roleLabels = { manager: 'Quản lý câu lạc bộ', owner: 'Chủ sở hữu ngựa', vet: 'Bác sĩ thú y' }
 
 function userRole(user) {
   if (user?.role === 'CLUB_MANAGER') {
@@ -137,129 +144,59 @@ function NavIcon({ kind }) {
   )
 }
 
-function LoginScreen({
-  onLogin,
-  error,
-  busy,
-}) {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [formError, setFormError] =
-    useState('')
+function useClubName(clubId) {
+  const [lookup, setLookup] = useState({ clubId: '', name: '', error: '' })
 
-  async function submit(event) {
-    event.preventDefault()
-
-    setFormError('')
-
-    try {
-      await onLogin(
-        email.trim(),
-        password,
-      )
-    } catch (loginError) {
-      setFormError(
-        loginError instanceof Error
-          ? loginError.message
-          : 'Không thể đăng nhập.',
-      )
+  useEffect(() => {
+    if (!clubId) return undefined
+    let active = true
+    getClubs()
+      .then((clubs) => {
+        if (!active) return
+        const club = clubs.find((item) => String(item.id) === String(clubId))
+        setLookup({
+          clubId: String(clubId),
+          name: club?.name || '',
+          error: club ? '' : 'Không tìm thấy tên câu lạc bộ từ dữ liệu hiện có.',
+        })
+      })
+      .catch((error) => {
+        if (active) {
+          setLookup({
+            clubId: String(clubId),
+            name: '',
+            error: error instanceof Error ? error.message : 'Không thể tải tên câu lạc bộ.',
+          })
+        }
+      })
+    return () => {
+      active = false
     }
-  }
+  }, [clubId])
 
-  return (
-    <main className="page-content narrow-content">
-      <section className="panel form-panel">
-        <div
-          style={{
-            marginBottom: 24,
-          }}
-        >
-          <Link
-            className="breadcrumb-back-button"
-            to="/"
-          >
-            ← Quay lại trang chủ
-          </Link>
-        </div>
-
-        <p className="eyebrow">
-          EQUITRACK · ĐĂNG NHẬP
-        </p>
-
-        <h1>Đăng nhập</h1>
-
-        <p>
-          Đăng nhập bằng tài khoản của bạn
-          để truy cập hồ sơ theo đúng quyền
-          được cấp.
-        </p>
-
-        {(formError || error) && (
-          <p
-            className="error-message"
-            role="alert"
-          >
-            {formError || error}
-          </p>
-        )}
-
-        <form onSubmit={submit}>
-          <label className="form-field">
-            <span>Email</span>
-
-            <input
-              type="email"
-              autoComplete="username"
-              required
-              value={email}
-              onChange={(event) =>
-                setEmail(event.target.value)
-              }
-            />
-          </label>
-
-          <label className="form-field">
-            <span>Mật khẩu</span>
-
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(event) =>
-                setPassword(
-                  event.target.value,
-                )
-              }
-            />
-          </label>
-
-          <button
-            className="button"
-            type="submit"
-            disabled={busy}
-          >
-            {busy
-              ? 'Đang đăng nhập...'
-              : 'Đăng nhập'}
-          </button>
-        </form>
-      </section>
-    </main>
-  )
+  return String(lookup.clubId) === String(clubId)
+    ? { clubName: lookup.name, clubError: lookup.error }
+    : { clubName: '', clubError: '' }
 }
 
 function HorseProfilePage({
   horse,
   role,
+  currentUser,
   registrationHistory = [],
+  medicalRecords = [],
   onRefresh,
   onSubmitRegistration,
   registrationBusy,
   registrationError,
   registrationMessage,
   canRegister,
+  canManageRegistration,
+  canRequestCorrection,
+  canVetExamine,
 }) {
+  const { clubName, clubError } = useClubName(horse?.clubId)
+
   const backTo =
     role === 'owner'
       ? '/owner/horses'
@@ -270,7 +207,6 @@ function HorseProfilePage({
   const rejection = [
     ...registrationHistory,
   ]
-    .reverse()
     .find(
       (item) =>
         item.status === 'Rejected' &&
@@ -297,7 +233,9 @@ function HorseProfilePage({
           status={
             horse.initialExamSigned
               ? 'COMPLETED'
-              : 'PENDING'
+              : horse.profileStatus === 'PENDING_EXAM'
+                ? 'PENDING'
+                : 'NOT_STARTED'
           }
           type="exam"
         />
@@ -306,24 +244,24 @@ function HorseProfilePage({
       {horse.healthAssessment && (
         <>
           <div className="info-item">
-            <span>HealthStatus</span>
+            <span>Kết quả khám gần nhất</span>
 
-            <strong>
-              {horse.healthAssessment
-                .healthStatus ||
-                'Chưa có kết luận'}
-            </strong>
+            <StatusBadge
+              status={horse.healthAssessment.healthStatus}
+              type="health"
+            />
           </div>
 
           <div className="info-item">
-            <span>
-              TrainingEligibility
-            </span>
+            <span>Điều kiện tập luyện</span>
 
             <strong>
-              {horse.healthAssessment
-                .trainingEligibility ||
-                'Chưa có kết luận'}
+              {({
+                Eligible: 'Đủ điều kiện',
+                Restricted: 'Hạn chế',
+                'Not Eligible': 'Không đủ điều kiện',
+              })[horse.healthAssessment.trainingEligibility]
+                || valueOrMissing(horse.healthAssessment.trainingEligibility)}
             </strong>
           </div>
 
@@ -347,10 +285,7 @@ function HorseProfilePage({
               <span>Ngày khám</span>
 
               <strong>
-                {
-                  horse.healthAssessment
-                    .examDate
-                }
+                {formatHorseDateTime(horse.healthAssessment.examDate)}
               </strong>
             </div>
           )}
@@ -361,8 +296,7 @@ function HorseProfilePage({
         <span>Cập nhật gần nhất</span>
 
         <strong>
-          {horse.updatedAt ||
-            'Chưa có thông tin'}
+          {formatHorseDateTime(horse.updatedAt)}
         </strong>
       </div>
     </div>
@@ -380,7 +314,7 @@ function HorseProfilePage({
 
         {horse && (
           <div className="profile-actions">
-            {role === 'manager' && (
+            {role === 'manager' && canManageRegistration && (
               <Link
                 className="button"
                 to={`/manager/horses/${horse.id}/intake`}
@@ -426,6 +360,7 @@ function HorseProfilePage({
               )}
 
             {role === 'owner' &&
+              canRequestCorrection &&
               horse.profileStatus ===
                 'APPROVED' && (
                 <Link
@@ -437,6 +372,7 @@ function HorseProfilePage({
               )}
 
             {role === 'vet' &&
+              canVetExamine &&
               horse.profileStatus ===
                 'PENDING_EXAM' && (
                 <Link
@@ -490,6 +426,8 @@ function HorseProfilePage({
           </section>
         )}
 
+      {clubError && <p className="profile-data-warning" role="status">Không thể hiển thị tên câu lạc bộ: {clubError}</p>}
+
       <HorseProfile
         horse={horse}
         owner={
@@ -498,10 +436,15 @@ function HorseProfilePage({
                 fullName:
                   horse.ownerName,
               }
-            : undefined
+            : role === 'owner' && String(horse?.ownerUserId) === String(currentUser.id)
+              ? currentUser
+              : undefined
         }
+        clubName={clubName}
         documents={horse?.documents}
         healthContent={healthContent}
+        medicalRecords={medicalRecords}
+        registrationHistory={registrationHistory}
         registrationLabel={
           role === 'manager'
             ? registrationGroupLabel(
@@ -510,48 +453,6 @@ function HorseProfilePage({
             : undefined
         }
       />
-
-      {registrationHistory.length >
-        0 && (
-        <section className="panel profile-section">
-          <h2>Lịch sử đăng ký</h2>
-
-          <div className="request-list">
-            {registrationHistory.map(
-              (item) => (
-                <article
-                  className="request-item"
-                  key={item.id}
-                >
-                  <strong>
-                    Yêu cầu #{item.id} ·{' '}
-                    {item.status}
-                  </strong>
-
-                  <p>
-                    Ngày gửi:{' '}
-                    {item.requestDate ||
-                      '—'}
-
-                    {item.reviewedAt
-                      ? ` · Ngày xử lý: ${item.reviewedAt}`
-                      : ''}
-                  </p>
-
-                  {item.managerNote && (
-                    <p>
-                      Ghi chú Manager:{' '}
-                      {
-                        item.managerNote
-                      }
-                    </p>
-                  )}
-                </article>
-              ),
-            )}
-          </div>
-        </section>
-      )}
 
       {horse && (
         <button
@@ -596,6 +497,8 @@ function HorseProfileRoute({
     setRegistrationHistory,
   ] = useState([])
 
+  const [medicalRecords, setMedicalRecords] = useState([])
+
   const [
     loadedHorseId,
     setLoadedHorseId,
@@ -626,6 +529,7 @@ function HorseProfileRoute({
           result,
           documents,
           history,
+          records,
         ] = await Promise.all([
           getHorseById(
             String(horseId),
@@ -638,6 +542,10 @@ function HorseProfileRoute({
           getRegistrationHistory(
             String(horseId),
           ),
+
+          role === 'manager'
+            ? getMedicalRecords(String(horseId))
+            : Promise.resolve([]),
         ])
 
         setError('')
@@ -650,6 +558,7 @@ function HorseProfileRoute({
         setRegistrationHistory(
           history,
         )
+        setMedicalRecords(records)
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -662,7 +571,7 @@ function HorseProfileRoute({
         )
       }
     },
-    [horseId],
+    [horseId, role],
   )
 
   useEffect(() => {
@@ -736,9 +645,8 @@ function HorseProfileRoute({
 
       onHorseUpdated(updated)
 
-      setRegistrationMessage(
-        'Đã gửi hồ sơ đến CLB',
-      )
+      setRegistrationHistory(await getRegistrationHistory(id))
+      setRegistrationMessage('Đã gửi hồ sơ đến CLB')
     } catch (submitError) {
       setRegistrationError(
         submitError instanceof Error
@@ -754,9 +662,11 @@ function HorseProfileRoute({
     <HorseProfilePage
       horse={horse}
       role={role}
+      currentUser={currentUser}
       registrationHistory={
         registrationHistory
       }
+      medicalRecords={medicalRecords}
       onRefresh={async (id) => {
         await load()
         await onRefresh(id)
@@ -778,6 +688,15 @@ function HorseProfileRoute({
           'HORSE_REGISTER',
         )
       }
+      canManageRegistration={(
+        ((currentUser.permissions.includes('HORSE_REGISTER') || currentUser.permissions.includes('HORSE_REGISTER_REVIEW'))
+          && ['DRAFT', 'REJECTED'].includes(horse?.profileStatus))
+        || (currentUser.permissions.includes('HORSE_REGISTER_REVIEW')
+          && ['SUBMITTED', 'PENDING_EXAM'].includes(horse?.profileStatus))
+        || (currentUser.permissions.includes('HORSE_ARCHIVE') && horse?.profileStatus === 'APPROVED')
+      )}
+      canRequestCorrection={currentUser.permissions.includes('PROFILE_EDIT_REQUEST')}
+      canVetExamine={currentUser.permissions.includes('MEDICAL_MANAGE')}
     />
   )
 }
@@ -874,7 +793,7 @@ function ManagerIntakeRoute({
     return () => {
       current = false
     }
-  }, [stallReloadCount])
+  }, [horseId, stallReloadCount])
 
   const loading =
     loadedId !== String(horseId)
@@ -930,6 +849,9 @@ function ManagerIntakeRoute({
       await action()
 
     setHorse(saved)
+    if (saved.profileStatus === 'APPROVED' || saved.profileStatus === 'ARCHIVED') {
+      setStallReloadCount((count) => count + 1)
+    }
 
     return saved
   }
@@ -1114,6 +1036,7 @@ function OwnerCorrectionRoute({
 
   return (
     <OwnerCorrectionRequest
+      key={horseId}
       horse={horse}
       requests={requests}
       onSubmitted={(saved) =>
@@ -1326,6 +1249,7 @@ function VetHorseRoute({
   if (examination) {
     return (
       <VetExaminationForm
+        key={`${horse.id}:${activeRequest?.id || ''}:${draft?.id || ''}`}
         horse={horse}
         currentUser={
           currentUser
@@ -1358,79 +1282,21 @@ function VetHorseRoute({
     )
   }
 
-  const owner =
-    horse.ownerName || ''
-
   return (
-    <main className="page-content">
-      <div className="horse-actions">
-        <Link
-          className="breadcrumb-back-button"
-          to="/vet/horses-needing-exam"
-        >
-          ← Quay lại hàng đợi
-        </Link>
-
-        {horse.profileStatus ===
-          'PENDING_EXAM' && (
-          <Link
-            className="button"
-            to={`/vet/horses/${horse.id}/examination`}
-          >
-            Mở khám đầu vào
-          </Link>
-        )}
-      </div>
-
       <HorseProfilePage
         horse={horse}
         role="vet"
+        currentUser={currentUser}
         registrationHistory={
           registrationHistory
         }
+        medicalRecords={records}
+        canVetExamine={currentUser.permissions.includes('MEDICAL_MANAGE')}
         onRefresh={async (id) => {
           await load()
           await onRefresh(id)
         }}
       />
-
-      <section className="panel profile-section">
-        <h2>Phiếu khám</h2>
-
-        {records.length === 0 ? (
-          <p>Chưa có phiếu khám.</p>
-        ) : (
-          records.map((record) => (
-            <article key={record.id}>
-              <strong>
-                #{record.id} ·{' '}
-                {record.examType} ·{' '}
-                {record.recordStatus}
-              </strong>
-
-              <p>
-                Vet:{' '}
-                {record.vetName ||
-                  `#${record.vetId}`}{' '}
-                ·{' '}
-                {record.examDate ||
-                  'Chưa có ngày'}
-              </p>
-
-              <p>
-                {record.conclusion}
-              </p>
-            </article>
-          ))
-        )}
-      </section>
-
-      {owner && (
-        <span className="sr-only">
-          Chủ sở hữu: {owner}
-        </span>
-      )}
-    </main>
   )
 }
 
@@ -1489,6 +1355,7 @@ function AppContent() {
 
   useEffect(() => {
     const expire = () => {
+      clearPendingHorseDocumentUploads()
       setCurrentUser(null)
 
       setAuthError(
@@ -1525,7 +1392,10 @@ function AppContent() {
       })
       .catch((error) => {
         if (current) {
-          clearSession()
+          if (error instanceof ApiError && error.status === 401) {
+            clearPendingHorseDocumentUploads()
+            clearSession()
+          }
 
           setCurrentUser(null)
 
@@ -1549,7 +1419,8 @@ function AppContent() {
 
   const loadData = useCallback(
     async () => {
-      if (!currentUser) {
+      if (!currentUser || !userRole(currentUser)) {
+        setLoadingData(false)
         return
       }
 
@@ -1654,6 +1525,7 @@ function AppContent() {
   }
 
   function logout() {
+    clearPendingHorseDocumentUploads()
     clearSession()
 
     setCurrentUser(null)
@@ -1842,6 +1714,14 @@ function AppContent() {
     )
   }
 
+  if (!role) {
+    return <main className="page-content narrow-content"><section className="panel">
+      <h1>Vai trò chưa có không gian Flow 1</h1>
+      <p>Tài khoản {currentUser.email} đã đăng nhập. Flow 1 hỗ trợ Owner, Club Manager và Vet.</p>
+      <button className="button" type="button" onClick={logout}>Đăng xuất</button>
+    </section></main>
+  }
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar">
@@ -1849,8 +1729,8 @@ function AppContent() {
           className="brand"
           to={home}
         >
-          <span className="brand-mark">
-            E
+          <span className="brand-mark" aria-hidden="true">
+            <img src="/equitrack-mark.jpg" alt="" />
           </span>
 
           <span>
@@ -1859,7 +1739,7 @@ function AppContent() {
             </strong>
 
             <small>
-              RACETRACK PERFORMANCE
+              RACEHORSE PERFORMANCE
             </small>
           </span>
         </Link>
@@ -1953,7 +1833,7 @@ function AppContent() {
             <strong>
               {currentUser.clubId
                 ? `Câu lạc bộ #${currentUser.clubId}`
-                : 'Equi'}
+                : 'EquiTrack'}
             </strong>
           </div>
 
@@ -2062,6 +1942,9 @@ function AppContent() {
                 )
               }
             />
+
+            <Route path="/manager/horses/new" element={role === 'manager' && currentUser.permissions.some((permission) => ['HORSE_REGISTER', 'HORSE_REGISTER_REVIEW'].includes(permission))
+              ? <CreateHorse /> : <Navigate to={home} replace />} />
 
             <Route
               path="/manager/profile-change-requests"
@@ -2275,6 +2158,7 @@ function AppContent() {
                     initialExams={
                       initialExams
                     }
+                    horses={horses}
                     onRetry={
                       retryLoad
                     }
@@ -2427,19 +2311,17 @@ function AppContent() {
         )}
 
         <footer className="app-footer">
-          EQUITRACK · FLOW 1
+          EQUITRACK
         </footer>
       </div>
     </div>
   )
 }
 
+const router = createBrowserRouter([{ path: '*', element: <AppContent /> }])
+
 function App() {
-  return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
-  )
+  return <RouterProvider router={router} />
 }
 
 export default App
