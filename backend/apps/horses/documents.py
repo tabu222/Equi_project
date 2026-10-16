@@ -54,9 +54,13 @@ def save_upload(horse_id: int, file) -> str:
     relative = Path("horse-documents") / str(horse_id) / f"{uuid.uuid4().hex}{ext}"
     target = media_root() / relative
     target.parent.mkdir(parents=True, exist_ok=True)
-    with open(target, "wb") as out:
-        for chunk in file.chunks():
-            out.write(chunk)
+    try:
+        with open(target, "wb") as out:
+            for chunk in file.chunks():
+                out.write(chunk)
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
     return UPLOAD_PREFIX + relative.as_posix()
 
 

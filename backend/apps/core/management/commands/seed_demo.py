@@ -2,10 +2,9 @@
 Tạo dữ liệu demo để chạy thử frontend:  python manage.py seed_demo --password <mật-khẩu-dev>
 
 - Bổ sung Role / Permission / RolePermission nếu thiếu (horse_v2.sql thường đã có sẵn).
-- Bổ sung danh mục chuyên môn (Specialization) nếu thiếu.
-- Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng, vài vật tư trong kho và 18 tài khoản (email @equi.local,
+- Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng và 18 tài khoản (email @equi.local,
   họ tên người thật, có số điện thoại và địa chỉ): 1 Manager, 2 Head Trainer, 3 Trainer, 3 Work Rider, 3 Vet,
-  3 Groom, 3 chủ ngựa. Mỗi trainer một chuyên môn khác nhau để Head Trainer phân công được ngay.
+  3 Groom, 3 chủ ngựa. Flow 2–4 chưa cài: không tạo chuyên môn trainer hay vật tư kho.
 - Tạo 6 ngựa mẫu của chủ ngựa mẫu, đi qua đúng luồng Flow 1 nên đủ các trạng thái để thử giao diện:
   3 ngựa Approved (có mã ngựa, chuồng, phiếu khám đầu vào), 1 PendingExam, 1 Submitted, 1 Draft.
 - Tài khoản mẫu cũ đang thiếu CLB / số điện thoại / địa chỉ được điền bổ sung; tên cũ "Demo ..." đổi sang tên mới.
@@ -16,6 +15,7 @@ Tạo dữ liệu demo để chạy thử frontend:  python manage.py seed_demo 
 Không đưa mật khẩu demo lên GitHub; mỗi máy tự chạy lệnh này.
 """
 import secrets
+import os
 from datetime import date
 
 from django.core.management.base import BaseCommand
@@ -23,14 +23,10 @@ from django.db import transaction
 
 from apps.accounts.models import Club, Role, User, UserRole
 from apps.accounts.rbac import ensure_rbac_seed
-from apps.care.models import InventoryItem
-from apps.core import emails
 from apps.horses import services as horse_services
 from apps.horses.models import Horse, Stall
 from apps.medical import services as medical_services
 from apps.medical.models import MedicalRecord
-from apps.training.models import TrainerSpecialization
-from apps.training.seed import ensure_specializations
 
 CLUB_NAME = "Equi Racing Club"
 OLD_CLUB_NAMES = ["Equi Demo Club"]          # tên CLB ở bản seed cũ: chạy lại thì đổi tên, không tạo CLB thứ hai
@@ -75,11 +71,6 @@ DEMO_USERS = [
     ("owner3@equi.local", "Trịnh Ngọc Diệp", "HORSE_OWNER", "0917465230",
      "190 Hai Bà Trưng, Phường Đa Kao, Quận 1, TP. Hồ Chí Minh"),
 ]
-# Mỗi trainer một chuyên môn (trainer không có trong danh sách thì nhận Flat Racing)
-TRAINER_SPECIALIZATIONS = {"trainer@equi.local": "FLAT_RACING", "trainer2@equi.local": "STEEPLECHASE_HURDLE",
-                           "trainer3@equi.local": "ENDURANCE"}
-DEMO_ITEMS = [("Yến mạch", "Food", "kg", 500, 100), ("Cỏ khô", "Food", "kg", 1000, 200),
-              ("Băng chân", "Care Equipment", "cuộn", 40, 10), ("Thuốc sát trùng", "Medicine", "chai", 12, 5)]
 DEMO_STALLS = [("A01", "Standard"), ("A02", "Standard"), ("A03", "Standard"), ("A04", "Standard"),
                ("B01", "Foaling"), ("Q01", "Quarantine")]
 
@@ -122,26 +113,15 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        with emails.suppressed():  # dữ liệu mẫu: không gửi mail thông báo
-            self.seed(options)
-
-    def seed(self, options):
-        password = options.get("password") or secrets.token_urlsafe(9)
+        password = options.get("password") or os.getenv("EQUI_DEMO_PASSWORD") or secrets.token_urlsafe(12)
         reset = options["reset_passwords"]
 
+        self.stdout.write("Phạm vi Flow 1: bỏ qua chuyên môn trainer và kho vật tư (chưa có Flow 2/4).")
         ensure_rbac_seed()
-        specializations = ensure_specializations()
         club = self.ensure_club()
         for number, stall_type in DEMO_STALLS:
             if not Stall.objects.filter(club=club, stall_number=number).exists():
                 Stall.objects.create(club=club, stall_number=number, stall_type=stall_type)
-
-        for name, item_type, unit, quantity, minimum in DEMO_ITEMS:
-            if not InventoryItem.objects.filter(club=club, item_name=name).exists():
-                item = InventoryItem(club=club, item_name=name, item_type=item_type, unit=unit, quantity=quantity,
-                                     minimum_quantity=minimum)
-                item.refresh_status()
-                item.save()
 
         rows = []
         for email, full_name, role_code, phone, address in DEMO_USERS:
@@ -171,9 +151,6 @@ class Command(BaseCommand):
             role = Role.objects.get(code=role_code)
             if not UserRole.objects.filter(user=user, role=role).exists():
                 UserRole.objects.create(user=user, role=role)
-            if role_code == "TRAINER" and not TrainerSpecialization.objects.filter(trainer=user).exists():
-                code = TRAINER_SPECIALIZATIONS.get(email, "FLAT_RACING")
-                TrainerSpecialization.objects.create(trainer=user, specialization=specializations[code])
             rows.append((role_code, email, state))
 
         horses = self.ensure_horses(club)
@@ -202,7 +179,7 @@ class Command(BaseCommand):
 
     def ensure_horses(self, club):
         """Tạo ngựa mẫu qua đúng các bước Flow 1. Ngựa nào đã có (cùng tên, cùng chủ) thì bỏ qua."""
-        users = {email: User.objects.get(email=email) for email, *_ in DEMO_USERS}
+        users = {email: User.objects.get(email__iexact=email) for email, *_ in DEMO_USERS}
         owner, manager, vet = users["owner@equi.local"], users["manager@equi.local"], users["vet@equi.local"]
         created = []
         for info, target, code, stall_number, weight, height in DEMO_HORSES:

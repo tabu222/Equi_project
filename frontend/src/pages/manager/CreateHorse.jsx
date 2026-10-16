@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { createHorse } from '../../api/horseApi.js'
-import { getUsers } from '../../api/userApi.js'
+import { createHorse } from '../../api/horseApi.ts'
+import { getUsers } from '../../api/userApi.ts'
 
 const initialForm = {
   name: '', breed: '', dateOfBirth: '', sex: '', coatColor: '',
-  sireId: '', damId: '', microchipNumber: '', registrationNumber: '', ownerUserId: '',
+  sireName: '', damName: '', microchipNumber: '', registrationNumber: '', ownerUserId: '',
 }
 
 function CreateHorse() {
@@ -42,7 +42,7 @@ function CreateHorse() {
     setError('')
     try {
       const horse = await createHorse(form)
-      navigate(`/horses/${horse.id}`, { replace: true })
+      navigate(`/manager/horses/${horse.id}/intake`, { replace: true })
     } catch (saveError) {
       setError(saveError.message || 'Không thể tạo hồ sơ ngựa.')
     } finally {
@@ -73,8 +73,8 @@ function CreateHorse() {
           <label className="form-field"><span>Màu lông</span><input maxLength={50} value={form.coatColor} onChange={(event) => update('coatColor', event.target.value)} /></label>
           <label className="form-field"><span>Số microchip</span><input maxLength={30} value={form.microchipNumber} onChange={(event) => update('microchipNumber', event.target.value)} /></label>
           <label className="form-field"><span>Số hộ chiếu / đăng ký</span><input maxLength={50} value={form.registrationNumber} onChange={(event) => update('registrationNumber', event.target.value)} /></label>
-          <label className="form-field"><span>Tên ngựa cha</span><input maxLength={100} value={form.sireId} onChange={(event) => update('sireId', event.target.value)} /></label>
-          <label className="form-field"><span>Tên ngựa mẹ</span><input maxLength={100} value={form.damId} onChange={(event) => update('damId', event.target.value)} /></label>
+          <label className="form-field"><span>Tên ngựa cha</span><input maxLength={100} value={form.sireName} onChange={(event) => update('sireName', event.target.value)} /></label>
+          <label className="form-field"><span>Tên ngựa mẹ</span><input maxLength={100} value={form.damName} onChange={(event) => update('damName', event.target.value)} /></label>
         </div>
         <p className="profile-copy">Hồ sơ được lưu ở trạng thái Draft. Ngày sinh, giới tính và microchip cần có trước khi gửi hồ sơ đăng ký.</p>
         {error && <p className="error-message" role="alert">{error}</p>}

@@ -1,7 +1,9 @@
 import re
 from pathlib import Path
+from unittest import skipUnless
 
 from django.conf import settings
+from django.apps import apps
 from django.test import SimpleTestCase
 
 from apps.accounts.rbac import PERMISSIONS, ROLE_PERMISSIONS, ROLES
@@ -52,6 +54,22 @@ class MedicalRecordTests(Flow1TestCase):
         self.assertEqual(res.data["code"], "NOT_RECORD_OWNER")
         self.assertEqual(other.post(f"/api/medical-records/{record_id}/sign").status_code, 409)
 
+    def test_old_draft_cannot_be_signed_after_rejection_and_resubmission(self):
+        horse_id = self.pending_horse()
+        vet = self.client_for(self.vet)
+        draft = vet.post(f"/api/horses/{horse_id}/medical-records", {
+            "ExamType": "Initial Exam", "HealthStatus": "Healthy", "TrainingEligibility": "Eligible",
+        }, format="json")
+        self.assertEqual(draft.status_code, 201, draft.data)
+        self.client_for(self.manager).post(f"/api/horses/{horse_id}/reject", {"Reason": "Missing documents"}, format="json")
+        self.submit_and_verify(horse_id)
+        response = vet.post(f"/api/medical-records/{draft.data['MedicalRecordID']}/sign")
+        self.assertEqual(response.status_code, 409, response.data)
+        self.assertEqual(response.data["code"], "INVALID_STATUS")
+        self.assertEqual(vet.post(f"/api/horses/{horse_id}/medical-records", {
+            "ExamType": "Initial Exam",
+        }, format="json").status_code, 201)
+
     def test_drafts_hidden_from_non_vets(self):
         horse_id = self.pending_horse()
         res = self.client_for(self.vet).post(f"/api/horses/{horse_id}/medical-records",
@@ -86,7 +104,7 @@ class MedicalRecordTests(Flow1TestCase):
         self.assertIn("WeightKg", res.data)
         self.assertIn("HealthStatus", res.data)
 
-    def test_routine_exam_only_after_approval(self):
+    def test_non_initial_exams_are_unavailable_in_flow1_checkout(self):
         horse_id = self.pending_horse()
         vet = self.client_for(self.vet)
         res = vet.post(f"/api/horses/{horse_id}/medical-records", {"ExamType": "Routine Exam"}, format="json")
@@ -97,10 +115,9 @@ class MedicalRecordTests(Flow1TestCase):
             "ExamType": "Injury Exam", "HealthStatus": "Injured", "TrainingEligibility": "Not Eligible",
             "InjuryLocation": "Chân trước trái",
         }, format="json")
-        self.assertEqual(res.status_code, 201, res.data)
-        self.assertIsNone(res.data["RegistrationRequestID"])
-        vet.post(f"/api/medical-records/{res.data['MedicalRecordID']}/sign")
-        self.assertEqual(Horse.objects.get(pk=approved_id).current_health_status, "Injured")
+        self.assertEqual(res.status_code, 409, res.data)
+        self.assertEqual(res.data["code"], "EXAM_TYPE_UNAVAILABLE")
+        self.assertEqual(Horse.objects.get(pk=approved_id).current_health_status, "Healthy")
 
     def approved_horse_with_new_chip(self):
         horse_id = self.owner_creates_horse(MicrochipNumber="985000000000777", HorseName="Breeze")
@@ -182,6 +199,7 @@ class RbacMatchesSqlTests(SimpleTestCase):
         self.assertEqual(sql_mapping, {role: set(codes) for role, codes in ROLE_PERMISSIONS.items()})
 
 
+@skipUnless(apps.is_installed("apps.training"), "Flow 2 training is not included in this checkout")
 class SpecializationSeedMatchesSqlTests(SimpleTestCase):
     def test_specializations_match_sql(self):
         from apps.training.seed import SPECIALIZATIONS

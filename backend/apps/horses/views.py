@@ -1,4 +1,7 @@
 from pathlib import Path
+import json
+from django.conf import settings
+from django.db import transaction
 
 from django.db.models import Q
 from django.http import FileResponse
@@ -72,6 +75,7 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         "approve": REVIEW,
         "archive": ("HORSE_ARCHIVE",),
         "profile_change_requests": ("PROFILE_EDIT_REQUEST",),
+        "profile_change_options": ("PROFILE_EDIT_REQUEST",),
         "audit_logs": ("AUDIT_VIEW",),
     }
 
@@ -93,7 +97,7 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             queryset = queryset.filter(
                 Q(horse_name__icontains=term) | Q(horse_code__icontains=term) | Q(microchip_number__icontains=term)
             )
-        return queryset
+        return queryset.select_for_update() if self.request.method not in ("GET", "HEAD", "OPTIONS") else queryset
 
     def get_serializer_class(self):
         return HorseDetailSerializer if self.action == "retrieve" else HorseSerializer
@@ -199,13 +203,15 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         horse = self.get_object()
         owner_only = not request.user.has_perm(STAFF_VIEW)
         if request.method == "GET":
-            documents = horse.documents.select_related("uploaded_by")
+            documents = horse.documents.select_related("uploaded_by").filter(is_retired=False)
             if owner_only:
                 documents = documents.filter(is_visible_to_owner=True)
             return Response(HorseDocumentSerializer(documents, many=True).data)
 
         if not can_manage_registration(request.user, horse):
             raise PermissionDenied("Bạn không được thêm giấy tờ cho ngựa này.")
+        if owner_only and horse.registration_status == Horse.RegistrationStatus.APPROVED:
+            raise BusinessRuleError("Hãy gửi tài liệu trong yêu cầu cập nhật hồ sơ để Manager duyệt.", "APPROVAL_REQUIRED")
         if horse.registration_status == Horse.RegistrationStatus.ARCHIVED:
             raise BusinessRuleError("Ngựa đã lưu trữ, không thêm giấy tờ được.", "INVALID_STATUS")
 
@@ -220,6 +226,7 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             document = HorseDocument.objects.create(
                 horse=horse, document_name=name, document_type=v["DocumentType"], file_url=file_url,
                 uploaded_by=request.user, is_visible_to_owner=visible,
+                is_profile_image=v["DocumentType"] == "Other" and documents_store.content_type(file_url).startswith("image/"),
             )
         else:
             data = HorseDocumentSerializer(data=request.data)
@@ -230,16 +237,35 @@ class HorseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
         return Response(HorseDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
 
     # ---------------- yêu cầu sửa lý lịch ----------------
-    @action(detail=True, methods=["post"], url_path="profile-change-requests")
+    @action(detail=True, methods=["get"], url_path="profile-change-options")
+    def profile_change_options(self, request, pk=None):
+        horse = self.get_object()
+        if not is_owner_of(request.user, horse):
+            raise PermissionDenied()
+        return Response({"MaxFileMB": settings.UPLOAD_MAX_MB,
+                         "MaxFiles": settings.CHANGE_REQUEST_MAX_FILES,
+                         "DocumentTypes": list(HorseDocument.DocumentType.values),
+                         "ClearableFields": []})
+
+    @action(detail=True, methods=["post"], url_path="profile-change-requests",
+            parser_classes=[JSONParser, MultiPartParser])
     def profile_change_requests(self, request, pk=None):
         horse = self.get_object()
         if not is_owner_of(request.user, horse):
             raise PermissionDenied("Chỉ chủ ngựa được gửi yêu cầu sửa lý lịch.")
-        data = ProfileChangeRequestCreateSerializer(data=request.data)
+        body = request.data
+        if (request.content_type or "").startswith("multipart/"):
+            try:
+                body = json.loads(request.data.get("Payload", ""))
+            except (TypeError, ValueError):
+                raise ValidationError({"Payload": ["Nội dung yêu cầu không đúng JSON."]})
+        data = ProfileChangeRequestCreateSerializer(data=body)
         data.is_valid(raise_exception=True)
         v = data.validated_data
         change = services.create_change_request(horse, request.user, v["Changes"], v["Reason"],
-                                                v.get("EvidenceDocumentID"))
+                                                v.get("EvidenceDocumentID"), files=request.FILES,
+                                                **{k: value for k, value in v.items()
+                                                   if k not in ("Changes", "Reason", "EvidenceDocumentID")})
         return Response(ProfileChangeRequestSerializer(change).data, status=status.HTTP_201_CREATED)
 
     # ---------------- lịch sử thao tác ----------------
@@ -266,7 +292,32 @@ class ProfileChangeRequestViewSet(mixins.ListModelMixin, mixins.RetrieveModelMix
     def get_permissions(self):
         if self.action in ("approve", "reject"):
             return [HasAnyPermission("PROFILE_EDIT_APPROVE")()]
+        if self.action == "withdraw":
+            return [HasAnyPermission("PROFILE_EDIT_REQUEST")()]
         return [HasAnyPermission("PROFILE_EDIT_APPROVE", "PROFILE_EDIT_REQUEST")()]
+
+    @action(detail=True, methods=["post"])
+    def withdraw(self, request, pk=None):
+        from .change_requests import withdraw
+        return Response(ProfileChangeRequestSerializer(withdraw(self.get_object(), request.user)).data)
+
+    @action(detail=True, methods=["get"], url_path=r"attachments/(?P<attachment_index>[0-9]+)")
+    def attachment_file(self, request, pk=None, attachment_index=None):
+        change = self.get_object()
+        items = json.loads(change.changed_fields).get("Attachments", [])
+        index = int(attachment_index)
+        if index >= len(items) or not items[index].get("StoredFile"):
+            raise NotFound("Không tìm thấy file.")
+        item = items[index]
+        path = documents_store.stored_path(item["StoredFile"])
+        if not path.is_file():
+            raise NotFound("Không tìm thấy file trên máy chủ.")
+        response = FileResponse(open(path, "rb"), content_type=documents_store.content_type(item["StoredFile"]),
+                                as_attachment=request.query_params.get("download") == "1",
+                                filename=item.get("OriginalName", item["DocumentName"]))
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     def get_queryset(self):
         user = self.request.user
@@ -370,9 +421,10 @@ class HorseDocumentDetailView(APIView):
       - Giấy tờ đang làm bằng chứng cho yêu cầu sửa lý lịch thì không xóa được.
     """
 
+    @transaction.atomic
     def delete(self, request, document_id):
         document = get_visible_document(request.user, document_id)
-        horse = document.horse
+        horse = Horse.objects.select_for_update().get(pk=document.horse_id)
         if not can_manage_registration(request.user, horse):
             raise PermissionDenied("Bạn không được xóa giấy tờ của ngựa này.")
         if not request.user.has_perm("HORSE_REGISTER_REVIEW"):
@@ -383,6 +435,13 @@ class HorseDocumentDetailView(APIView):
         if ProfileChangeRequest.objects.filter(evidence_document=document).exists():
             raise BusinessRuleError("Giấy tờ đang là bằng chứng của yêu cầu sửa lý lịch, không xóa được.",
                                     "DOCUMENT_IN_USE")
+        for change in horse.profile_change_requests.all():
+            payload = json.loads(change.changed_fields)
+            referenced = [i.get("DocumentID") for i in payload.get("EvidenceDocuments", []) + payload.get("RemovedImages", [])]
+            referenced += [i.get("id") for i in payload.get("Snapshot", {}).get("Documents", [])]
+            if document.id in referenced or any(i.get("StoredFile") == document.file_url
+                                                for i in payload.get("Attachments", [])):
+                raise BusinessRuleError("Tệp thuộc lịch sử yêu cầu, không được xóa vĩnh viễn.", "DOCUMENT_IN_USE")
         file_url = document.file_url
         log_action(request.user, "DELETE_DOCUMENT", horse, {"DocumentID": document.id,
                                                            "DocumentName": document.document_name})

@@ -1,24 +1,61 @@
 """Lệnh seed_demo: dữ liệu mẫu đủ trạng thái, chạy lại không trùng, tự sửa tài khoản thiếu CLB."""
 from io import StringIO
+import secrets
 
 from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.accounts.models import Club, User
+from apps.accounts.models import Club, User, UserRole
 from apps.accounts.rbac import ensure_rbac_seed
-from apps.horses.models import Horse, StallAssignment
+from apps.horses.models import Horse, Stall, StallAssignment, RegistrationRequest
 from apps.horses.serializers import PROFILE_FIELDS
 from apps.medical.models import MedicalRecord
-from apps.training.models import TrainerSpecialization
 
 
 def seed(*args):
-    call_command("seed_demo", "--password", "seed-test-password", *args, stdout=StringIO())
+    call_command("seed_demo", "--password", secrets.token_urlsafe(18), *args, stdout=StringIO())
 
 
 class SeedDemoTests(TestCase):
+    def test_rerun_preserves_passwords_data_and_all_counts(self):
+        seed()
+        manager = User.objects.get(email="manager@equi.local")
+        old_password = secrets.token_urlsafe(18)
+        manager.set_password(old_password)
+        manager.phone = "0901112233"
+        manager.address = "Existing contact address"
+        manager.save()
+        old_hash = manager.password
+        models = (Club, User, UserRole, Horse, Stall, StallAssignment, RegistrationRequest, MedicalRecord)
+        before = [model.objects.count() for model in models]
+        horses_before = list(Horse.objects.values())
+        seed()
+        manager.refresh_from_db()
+        self.assertEqual([model.objects.count() for model in models], before)
+        self.assertEqual(list(Horse.objects.values()), horses_before)
+        self.assertEqual(manager.password, old_hash)
+        self.assertTrue(manager.check_password(old_password))
+        self.assertEqual(manager.phone, "0901112233")
+        self.assertEqual(manager.address, "Existing contact address")
+
+    def test_explicit_reset_only_changes_demo_passwords(self):
+        seed()
+        old_password, new_password = secrets.token_urlsafe(18), secrets.token_urlsafe(18)
+        outsider = User.objects.create_user(email="existing@example.test", password=old_password, full_name="Existing")
+        call_command("seed_demo", password=new_password, reset_passwords=True, stdout=StringIO())
+        self.assertTrue(User.objects.get(email="manager@equi.local").check_password(new_password))
+        outsider.refresh_from_db()
+        self.assertTrue(outsider.check_password(old_password))
+
+    def test_existing_email_is_matched_case_insensitively(self):
+        ensure_rbac_seed()
+        User.objects.create_user(email="MANAGER@equi.local", password=secrets.token_urlsafe(18), full_name="Existing")
+        seed()
+        self.assertEqual(User.objects.filter(email__iexact="manager@equi.local").count(), 1)
+        self.assertEqual(User.objects.count(), 18)
+
     def test_creates_real_names_and_sample_horses(self):
         seed()
         manager = User.objects.get(email="manager@equi.local")
@@ -50,8 +87,6 @@ class SeedDemoTests(TestCase):
         for code, count in {"CLUB_MANAGER": 1, "HEAD_TRAINER": 2, "TRAINER": 3, "WORK_RIDER": 3, "GROOM": 3,
                             "HORSE_OWNER": 3}.items():
             self.assertEqual(User.objects.filter(roles__code=code).count(), count, code)
-        specs = TrainerSpecialization.objects.values_list("specialization__code", flat=True)
-        self.assertEqual(sorted(specs), ["ENDURANCE", "FLAT_RACING", "STEEPLECHASE_HURDLE"])
         self.assertEqual(set(MedicalRecord.objects.values_list("vet__email", flat=True)), {"vet@equi.local"})
 
         seed()  # chạy lại: không tạo trùng

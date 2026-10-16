@@ -131,6 +131,13 @@ class HorseDocument(models.Model):
     )
     is_visible_to_owner = models.BooleanField(default=True, db_column="IsVisibleToOwner")
     uploaded_at = models.DateTimeField(default=timezone.now, db_column="UploadedAt")
+    is_primary = models.BooleanField(default=False, db_column="IsPrimary")
+    is_retired = models.BooleanField(default=False, db_column="IsRetired")
+    is_profile_image = models.BooleanField(default=False, db_column="IsProfileImage")
+    replaces_document = models.ForeignKey(
+        "self", on_delete=models.DO_NOTHING, null=True, blank=True,
+        db_column="ReplacesDocumentID", related_name="versions",
+    )
 
     class Meta:
         managed = False
@@ -171,6 +178,7 @@ class ProfileChangeRequest(models.Model):
         PENDING = "Pending"
         APPROVED = "Approved"
         REJECTED = "Rejected"
+        WITHDRAWN = "Withdrawn"
 
     id = models.AutoField(primary_key=True, db_column="ProfileChangeRequestID")
     horse = models.ForeignKey(

@@ -4,8 +4,10 @@ import { getHorses } from '../../api/horseApi.ts'
 import EmptyState from '../../components/common/EmptyState.jsx'
 import StatusBadge from '../../components/common/StatusBadge.jsx'
 import { matchesRegistrationFilter, registrationFilters, registrationGroup } from '../../components/horse/registrationGroups.js'
+import HorseAvatar from '../../components/horse/HorseAvatar.jsx'
+import { formatHorseCode, formatHorseDate, valueOrMissing } from '../../components/horse/horseDisplay.js'
 
-const pageSize = 5
+const pageSize = 10
 const validFilters = new Set(registrationFilters.map(([value]) => value))
 const healthLabels = {
   NOT_ASSESSED: 'Chưa đánh giá',
@@ -15,6 +17,14 @@ const healthLabels = {
   RECOVERING: 'Đang hồi phục',
   ISOLATION: 'Cách ly',
 }
+const healthFilters = [
+  ['NOT_ASSESSED', 'Chưa đánh giá'],
+  ['ELIGIBLE', 'Đủ điều kiện'],
+  ['MONITORING', 'Theo dõi'],
+  ['INJURED', 'Chấn thương'],
+  ['RECOVERING', 'Đang hồi phục'],
+  ['ISOLATION', 'Cách ly'],
+]
 
 function HorseList({ owners = [] }) {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -23,6 +33,7 @@ function HorseList({ owners = [] }) {
   const [horses, setHorses] = useState([])
   const [search, setSearch] = useState('')
   const [selectedOwnerId, setSelectedOwnerId] = useState('All')
+  const [selectedHealth, setSelectedHealth] = useState('All')
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -83,19 +94,22 @@ function HorseList({ owners = [] }) {
       Draft: 0,
       Rejected: 0,
       Archived: 0,
-      All: baseHorses.length,
+      All: horses.length,
     }
-    baseHorses.forEach((horse) => {
+    horses.forEach((horse) => {
       const group = registrationGroup(horse)
       if (group in counts) counts[group] += 1
       if (group === 'Submitted' || group === 'Examined') counts.NeedsAction += 1
     })
     return counts
-  }, [baseHorses])
+  }, [horses])
 
   const filteredHorses = useMemo(
-    () => baseHorses.filter((horse) => matchesRegistrationFilter(horse, selectedFilter)),
-    [baseHorses, selectedFilter],
+    () => baseHorses.filter((horse) => (
+      matchesRegistrationFilter(horse, selectedFilter)
+      && (selectedHealth === 'All' || horse.healthStatus === selectedHealth)
+    )),
+    [baseHorses, selectedFilter, selectedHealth],
   )
   const pageCount = Math.max(1, Math.ceil(filteredHorses.length / pageSize))
   const currentPage = Math.min(page, pageCount)
@@ -126,6 +140,7 @@ function HorseList({ owners = [] }) {
   function clearFilters() {
     setSearch('')
     setSelectedOwnerId('All')
+    setSelectedHealth('All')
     selectFilter('All')
   }
 
@@ -135,19 +150,30 @@ function HorseList({ owners = [] }) {
     <main className="page-content horse-list-page">
       <nav className="breadcrumb" aria-label="Đường dẫn">Danh sách ngựa <span aria-hidden="true">/</span> Danh sách chiến mã</nav>
       <header className="page-heading list-heading">
-        <div><p className="eyebrow">QUẢN LÝ CÂU LẠC BỘ</p><h1>Danh sách chiến mã</h1><p>Hồ sơ Owner gửi đến CLB, tình trạng khám và hồ sơ đã tiếp nhận.</p></div>
-        <div className="horse-count"><strong>{filteredHorses.length}</strong><span>ngựa phù hợp</span></div>
+        <div><p className="eyebrow">QUẢN LÝ CÂU LẠC BỘ</p><h1>Danh sách ngựa</h1><p>Theo dõi hồ sơ tiếp nhận, thông tin chủ sở hữu và sức khỏe ngựa trong câu lạc bộ.</p></div>
+        <div className="horse-count"><strong>{horses.length}</strong><span>ngựa trong câu lạc bộ</span></div>
       </header>
+      <section className="horse-stat-strip" aria-label="Thống kê trạng thái hồ sơ">
+        {registrationFilters
+          .filter(([value]) => value !== 'All' && value !== 'NeedsAction' && groupCounts[value] > 0)
+          .map(([value, label]) => (
+            <div className="horse-stat-item" key={value}>
+              <span>{label}</span><strong>{groupCounts[value]}</strong>
+            </div>
+          ))}
+        {horses.length === 0 && <p>Chưa có hồ sơ ngựa trong phạm vi câu lạc bộ.</p>}
+      </section>
       <section className="filter-card" aria-label="Tìm kiếm và lọc danh sách ngựa">
         <div className="filter-row">
           <label className="search-field" htmlFor="horse-search"><span>Tìm kiếm</span><input id="horse-search" placeholder="Tên, mã hoặc microchip..." value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} /></label>
           <label className="filter-field" htmlFor="owner-filter"><span>Chủ sở hữu</span><select id="owner-filter" value={selectedOwnerId} onChange={(event) => { setSelectedOwnerId(event.target.value); setPage(1) }}><option value="All">Tất cả chủ sở hữu</option>{clubOwners.map((owner) => <option key={owner.ownerId} value={owner.ownerId}>{owner.fullName}</option>)}</select></label>
           <label className="filter-field" htmlFor="status-filter"><span>Trạng thái hồ sơ</span><select id="status-filter" value={selectedFilter} onChange={(event) => selectFilter(event.target.value)}>{registrationFilters.map(([value, label]) => <option key={value} value={value}>{label} ({groupCounts[value]})</option>)}</select></label>
+          <label className="filter-field" htmlFor="health-filter"><span>Tình trạng sức khỏe</span><select id="health-filter" value={selectedHealth} onChange={(event) => { setSelectedHealth(event.target.value); setPage(1) }}><option value="All">Tất cả tình trạng</option>{healthFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <button className="clear-filter-button" type="button" onClick={clearFilters}>Xóa bộ lọc</button>
           <button className="button button-secondary" type="button" onClick={refresh} disabled={loading}>{loading ? 'Đang tải...' : 'Làm mới'}</button>
         </div>
         <div className="horse-group-counts" aria-label="Số hồ sơ theo trạng thái">
-          {registrationFilters.filter(([value]) => value !== 'All').map(([value, label]) => (
+          {registrationFilters.filter(([value]) => value !== 'All' && value !== 'NeedsAction').map(([value, label]) => (
             <button key={value} type="button" className={`horse-group-count${selectedFilter === value ? ' selected' : ''}`} onClick={() => selectFilter(value)} aria-pressed={selectedFilter === value}>
               {label}<strong>{groupCounts[value]}</strong>
             </button>
@@ -161,12 +187,14 @@ function HorseList({ owners = [] }) {
             : filteredHorses.length === 0 ? (
               <div className="horse-list-empty"><EmptyState title="Không tìm thấy ngựa" description={selectedFilter === 'NeedsAction' ? 'Không có hồ sơ nào cần Manager xử lý theo điều kiện hiện tại.' : 'Không có ngựa phù hợp với tìm kiếm và bộ lọc hiện tại.'} /><button className="clear-filter-button" type="button" onClick={clearFilters}>Xóa bộ lọc</button></div>
             ) : (
-              <div className="table-wrapper"><table className="horse-table"><thead><tr><th scope="col">Mã ngựa</th><th scope="col">Tên ngựa</th><th scope="col">Giống</th><th scope="col">Chủ sở hữu</th><th scope="col">Trạng thái hồ sơ</th><th scope="col">Sức khỏe</th><th scope="col">Thao tác</th></tr></thead>
+              <div className="table-wrapper"><table className="horse-table"><thead><tr><th scope="col">Ngựa</th><th scope="col">Chủ sở hữu</th><th scope="col">Giống / giới tính</th><th scope="col">Trạng thái hồ sơ</th><th scope="col">Sức khỏe</th><th scope="col">Ngày tạo hồ sơ</th><th scope="col">Thao tác</th></tr></thead>
                 <tbody>{pageHorses.map((horse) => <tr key={horse.id}>
-                  <td className="horse-id">#{horse.code || horse.id}</td><td><strong>{horse.name || 'Chưa có tên'}</strong></td>
-                  <td>{horse.breed || '—'}</td><td>{horse.ownerName || owners.find((owner) => String(owner.ownerId) === String(horse.ownerUserId))?.fullName || 'Chưa có thông tin'}</td>
+                  <td><div className="horse-table-identity"><HorseAvatar horseId={horse.id} name={horse.name} size="small" /><div><strong>{horse.name || 'Chưa có tên'}</strong><small>{formatHorseCode(horse.code)}</small></div></div></td>
+                  <td>{valueOrMissing(horse.ownerName || owners.find((owner) => String(owner.ownerId) === String(horse.ownerUserId))?.fullName)}</td>
+                  <td>{valueOrMissing(horse.breed)}<small>{horse.sex === 'UNKNOWN' ? 'Chưa cập nhật giới tính' : ({ MALE: 'Đực', FEMALE: 'Cái', GELDING: 'Đực đã thiến' }[horse.sex] || horse.sex)}</small></td>
                   <td><StatusBadge status={horse.profileStatus} label={registrationGroup(horse) === 'Unknown' ? horse.profileStatus : registrationFilters.find(([value]) => value === registrationGroup(horse))?.[1]} type="registration" /></td>
                   <td><StatusBadge status={horse.healthStatus} label={healthLabels[horse.healthStatus] || horse.healthStatus} type="health" /></td>
+                  <td>{formatHorseDate(horse.createdAt)}</td>
                   <td><Link className="view-button" to={`/horses/${horse.id}`}>Xem chi tiết</Link></td>
                 </tr>)}</tbody>
               </table></div>

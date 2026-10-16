@@ -219,8 +219,8 @@ class HorseDocumentSerializer(DBColumnModelSerializer):
     class Meta:
         model = HorseDocument
         fields = ["id", "horse", "document_name", "document_type", "file_url", "uploaded_by", "UploadedByName",
-                  "is_visible_to_owner", "uploaded_at"]
-        read_only_fields = ["id", "horse", "uploaded_by", "uploaded_at"]
+                  "is_visible_to_owner", "uploaded_at", "is_primary", "is_retired", "is_profile_image", "replaces_document"]
+        read_only_fields = ["id", "horse", "uploaded_by", "uploaded_at", "is_primary", "is_retired", "is_profile_image", "replaces_document"]
         extra_kwargs = {"file_url": {"required": True, "allow_null": False}}
 
     def to_representation(self, instance):
@@ -285,16 +285,29 @@ class ProfileChangeRequestSerializer(DBColumnModelSerializer):
 
     ChangedFields = serializers.SerializerMethodField()
     HorseName = serializers.CharField(source="horse.horse_name", read_only=True)
+    ReviewedByName = serializers.CharField(source="reviewed_by.full_name", read_only=True, default=None)
 
     class Meta:
         model = ProfileChangeRequest
         fields = ["id", "horse", "HorseName", "requested_by", "requested_at", "ChangedFields",
-                  "evidence_document", "status", "reviewed_by", "reviewed_at", "review_note"]
+                  "evidence_document", "status", "reviewed_by", "ReviewedByName", "reviewed_at", "review_note"]
         read_only_fields = fields
 
     def get_ChangedFields(self, obj):
         try:
-            return json.loads(obj.changed_fields)
+            payload = json.loads(obj.changed_fields)
+            payload.pop("Snapshot", None)
+            if obj.evidence_document_id and not payload.get("EvidenceDocuments"):
+                doc = obj.evidence_document
+                if doc.is_visible_to_owner:
+                    payload["EvidenceDocuments"] = [{"DocumentID": doc.id, "DocumentName": doc.document_name,
+                        "DocumentType": doc.document_type, "IsUploadedFile": is_upload(doc.file_url),
+                        "FileUrl": f"/api/horse-documents/{doc.id}/file" if is_upload(doc.file_url) else doc.file_url}]
+            for index, item in enumerate(payload.get("Attachments", [])):
+                path = item.pop("StoredFile", None)
+                if path:
+                    item["FileUrl"] = f"/api/profile-change-requests/{obj.id}/attachments/{index}"
+            return payload
         except (TypeError, ValueError):
             return obj.changed_fields
 
@@ -302,9 +315,22 @@ class ProfileChangeRequestSerializer(DBColumnModelSerializer):
 class ProfileChangeRequestCreateSerializer(serializers.Serializer):
     """Body: {"Changes": {"CoatColor": "Dark Bay"}, "Reason": "...", "EvidenceDocumentID": 3}"""
 
-    Changes = serializers.DictField(child=serializers.CharField(allow_blank=True, allow_null=True))
+    Changes = serializers.DictField(child=serializers.CharField(allow_blank=True, allow_null=True), default=dict)
     Reason = serializers.CharField(max_length=1000)
     EvidenceDocumentID = serializers.IntegerField(required=False, allow_null=True)
+    EvidenceDocumentIDs = serializers.ListField(child=serializers.IntegerField(min_value=1), default=list, max_length=20)
+    AvatarDocumentID = serializers.IntegerField(required=False, min_value=1)
+    RemoveImageIDs = serializers.ListField(child=serializers.IntegerField(min_value=1), default=list, max_length=20)
+    Attachments = serializers.ListField(child=serializers.DictField(), default=list)
+
+
+class ChangeAttachmentSerializer(serializers.Serializer):
+    FileKey = serializers.RegexField(r"^file[0-9]+$")
+    Purpose = serializers.ChoiceField(choices=["avatar", "image", "evidence", "add", "replace"])
+    DocumentName = serializers.CharField(max_length=150)
+    DocumentType = serializers.ChoiceField(choices=HorseDocument.DocumentType.choices, default="Other")
+    ReplacesDocumentID = serializers.IntegerField(min_value=1, required=False)
+    Note = serializers.CharField(max_length=1000, required=False, allow_blank=True)
 
 
 class ReasonSerializer(serializers.Serializer):

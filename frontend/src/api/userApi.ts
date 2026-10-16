@@ -21,9 +21,14 @@ export function normalizeUser(value: unknown): User {
     CLUB_MANAGER: 'CLUB_MANAGER',
     HORSE_OWNER: 'OWNER',
     VETERINARIAN: 'VET',
+    HEAD_TRAINER: 'HEAD_TRAINER',
+    TRAINER: 'TRAINER',
+    WORK_RIDER: 'WORK_RIDER',
+    GROOM: 'GROOM',
   };
-  const role = roles.map((item) => roleMap[String(item)]).find(Boolean);
-  if (!role) throw new ApiError(`Tài khoản UserID ${rawId} không có vai trò Flow 1 được hỗ trợ.`);
+  const mappedRoles = roles.map((item) => roleMap[String(item)]).filter(Boolean);
+  const role = mappedRoles.find((item) => ['CLUB_MANAGER', 'OWNER', 'VET'].includes(item))
+    ?? mappedRoles[0] ?? 'UNSUPPORTED';
   return {
     id: String(rawId),
     clubId: record.ClubID == null ? '' : String(record.ClubID),
@@ -57,8 +62,10 @@ export async function getCurrentUser(): Promise<User> {
 export async function getUsers(roleCode?: string): Promise<User[]> {
   const suffix = roleCode ? `?RoleCode=${encodeURIComponent(roleCode)}` : '';
   const result = await apiGet<unknown>(`/users${suffix}`);
-  if (!Array.isArray(result)) throw new ApiError('API trả danh sách người dùng không đúng định dạng.');
-  return result.map(normalizeUser);
+  const rows = Array.isArray(result) ? result : result && typeof result === 'object'
+    ? (result as ApiRecord).results : undefined;
+  if (!Array.isArray(rows)) throw new ApiError('API trả danh sách người dùng không đúng định dạng.');
+  return rows.map(normalizeUser);
 }
 
 export async function createUser(payload: {

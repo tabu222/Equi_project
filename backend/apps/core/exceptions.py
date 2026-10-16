@@ -12,7 +12,7 @@ from django.db import DatabaseError, IntegrityError
 from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
-from rest_framework.views import exception_handler
+from rest_framework.views import exception_handler, set_rollback
 
 from .i18n import is_english, translate_data
 
@@ -215,6 +215,7 @@ def _build_error_response(exc, context):
         return response
 
     if isinstance(exc, DatabaseError):
+        set_rollback()
         known = friendly_db_error(exc)
         if known:
             message, code = known
@@ -224,4 +225,10 @@ def _build_error_response(exc, context):
                 {"detail": "Dữ liệu vi phạm ràng buộc của database.", "code": "DB_INTEGRITY"},
                 status=status.HTTP_409_CONFLICT,
             )
+        # Do not let Django's debug traceback become the API error body.
+        return Response(
+            {"detail": "Không thể đọc hoặc lưu dữ liệu. Vui lòng thử lại hoặc liên hệ quản lý hệ thống.",
+             "code": "DATABASE_ERROR"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
     return None

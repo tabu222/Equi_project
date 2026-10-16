@@ -1,23 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getProfileChangeRequests, reviewProfileChangeRequest } from '../../api/horseApi.ts'
-
-const fieldLabels = {
-  name: 'Horse name',
-  breed: 'Breed',
-  dateOfBirth: 'Date of birth',
-  coatColor: 'Coat color',
-  sex: 'Gender',
-  sireName: 'Sire name',
-  damName: 'Dam name',
-  microchipNumber: 'Microchip number',
-  registrationNumber: 'Passport number',
-}
+import ProfileProposalDetails from '../../components/horse/ProfileProposalDetails.jsx'
+import '../owner/OwnerCorrectionRequest.css'
 
 const statusLabels = {
   Pending: 'Chờ duyệt',
   Approved: 'Đã duyệt',
   Rejected: 'Đã từ chối',
+  Withdrawn: 'Đã rút',
 }
 
 function ProfileChangeRequests({ onHorseRefresh }) {
@@ -68,26 +59,24 @@ function ProfileChangeRequests({ onHorseRefresh }) {
   if (loading) return <main className="page-content"><section className="panel" role="status">Đang tải yêu cầu sửa hồ sơ...</section></main>
 
   return (
-    <main className="page-content">
+    <main className="page-content proposal-review-page">
       <header className="page-heading">
         <div>
           <p className="eyebrow">ĐĂNG KÝ NGỰA</p>
           <h1>Yêu cầu sửa hồ sơ</h1>
-          <p>Xem xét nội dung chủ ngựa đề nghị. Khi duyệt, trường được yêu cầu sẽ cập nhật vào hồ sơ.</p>
+          <p>So sánh thông tin, ảnh và tài liệu Owner đề nghị. Duyệt sẽ áp dụng toàn bộ thay đổi trong yêu cầu.</p>
         </div>
       </header>
       {error && <section className="panel" role="alert"><p>{error}</p>{requests.length === 0 && <button className="button" type="button" onClick={() => { setLoading(true); setReloadCount((count) => count + 1) }}>Thử lại</button>}</section>}
       {requests.length === 0 ? (
         <section className="panel"><p>Chưa có yêu cầu sửa hồ sơ.</p></section>
       ) : (
-        <div className="card-grid">
+        <div className="proposal-review-list">
           {requests.map((request) => (
             <article className="panel" key={request.requestId}>
               <p className="profile-id">Request #{request.requestId} · {statusLabels[request.status] || request.status}</p>
               <h2>{request.horseName || `Horse #${request.horseId}`}</h2>
-              <p>{fieldLabels[request.field] || 'Trường hồ sơ'}: <strong>{request.requestedValue || '—'}</strong></p>
-              <p>Lý do của chủ ngựa: {request.reason || '—'}</p>
-              {request.rejectionReason && <p>Ghi chú xử lý: {request.rejectionReason}</p>}
+              <ProfileProposalDetails request={request} />
               {request.createdAt && <p><small>Gửi lúc {new Date(request.createdAt).toLocaleString()}</small></p>}
               <p><Link to={`/manager/horses/${request.horseId}/intake`}>Mở hồ sơ tiếp nhận</Link></p>
               {request.status === 'Pending' && (

@@ -146,12 +146,9 @@ def approve(horse, user, horse_code, stall_id=None, manager_note=None):
 
 def archive(horse, user, reason):
     """
-    Ngựa rời CLB: lưu trữ hồ sơ, trả chuồng, kết thúc phân công trainer (hủy giáo án / buổi tập chưa diễn ra),
-    bỏ các việc chăm sóc chưa làm, khẩu phần đang áp dụng chuyển Expired.
+    Ngựa rời CLB trong bản Flow 1: lưu trữ hồ sơ và trả chuồng.
+    Flow 2/4 không được cài trong bản backend này.
     """
-    from apps.care.models import CareTask, DietPlan
-    from apps.training.services import active_assignment, end_assignment
-
     _require_status(horse, (S.APPROVED,), "lưu trữ hồ sơ")
     now = timezone.now()
     for assignment in horse.stall_assignments.filter(status="Active").select_related("stall"):
@@ -160,15 +157,6 @@ def archive(horse, user, reason):
         assignment.save(update_fields=["status", "end_date"])
         assignment.stall.status = Stall.Status.AVAILABLE
         assignment.stall.save(update_fields=["status"])
-    assignment = active_assignment(horse)
-    if assignment is not None:
-        end_assignment(assignment, user, "Ngựa rời CLB")
-    for task in CareTask.objects.filter(horse=horse, status=CareTask.Status.PENDING):
-        task.status = CareTask.Status.SKIPPED
-        task.note = ((task.note or "") + "\n[Bỏ qua] Ngựa đã rời CLB").strip()[:1000]
-        task.save(update_fields=["status", "note"])
-    DietPlan.objects.filter(horse=horse, status__in=("Pending", "Approved", "Adjusted")).update(status="Expired")
-
     horse.registration_status = S.ARCHIVED
     horse.archived_at = now
     horse.archived_by = user
@@ -185,78 +173,14 @@ def archive(horse, user, reason):
 COLUMN_TO_ATTR = {Horse._meta.get_field(attr).db_column: attr for attr in PROFILE_FIELDS}
 
 
-def create_change_request(horse, user, changes: dict, reason: str, evidence_document_id=None):
-    _require_status(horse, (S.APPROVED,), "gửi yêu cầu sửa lý lịch")
-    if horse.profile_change_requests.filter(status=ProfileChangeRequest.Status.PENDING).exists():
-        raise BusinessRuleError("Ngựa này đang có một yêu cầu sửa lý lịch chờ duyệt.", "PENDING_REQUEST_EXISTS")
-    unknown = [col for col in changes if col not in COLUMN_TO_ATTR]
-    if unknown:
-        raise BusinessRuleError(
-            f"Không được xin sửa các trường: {', '.join(unknown)}. Chỉ được: {', '.join(COLUMN_TO_ATTR)}.",
-            "FIELD_NOT_EDITABLE",
-        )
-    if not changes:
-        raise BusinessRuleError("Chưa có trường nào cần sửa.", "NO_CHANGES")
-    if evidence_document_id and not horse.documents.filter(pk=evidence_document_id).exists():
-        raise BusinessRuleError("Tài liệu bằng chứng không thuộc ngựa này.", "EVIDENCE_NOT_FOUND")
-    # kiểm tra giá trị mới ngay khi gửi (sai định dạng microchip, trùng hộ chiếu...) thay vì đợi lúc duyệt
-    from .serializers import HorseWriteSerializer
-
-    HorseWriteSerializer(horse, data=changes, partial=True).is_valid(raise_exception=True)
-
-    items = []
-    for column, new_value in changes.items():
-        old_value = getattr(horse, COLUMN_TO_ATTR[column])
-        items.append({"Field": column, "OldValue": None if old_value is None else str(old_value),
-                      "NewValue": new_value})
-    request = ProfileChangeRequest.objects.create(
-        horse=horse, requested_by=user,
-        changed_fields=json.dumps({"Reason": reason, "Changes": items}, ensure_ascii=False),
-        evidence_document_id=evidence_document_id,
-    )
-    log_action(user, "REQUEST_PROFILE_CHANGE", horse, {"ProfileChangeRequestID": request.id})
-    return request
+# Preserve the existing public service names.
+from .change_requests import (  # noqa: E402
+    create as create_change_request,
+    approve as approve_change_request,
+    reject as reject_change_request,
+)
 
 
-def approve_change_request(request, user, note=None):
-    from .serializers import HorseWriteSerializer
-
-    if request.status != ProfileChangeRequest.Status.PENDING:
-        raise BusinessRuleError("Yêu cầu này đã được xử lý.", "INVALID_STATUS")
-    horse = request.horse
-    payload = {item["Field"]: item["NewValue"] for item in json.loads(request.changed_fields)["Changes"]}
-    serializer = HorseWriteSerializer(horse, data=payload, partial=True)
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    horse.touch()
-    horse.save(update_fields=["updated_at"])
-
-    request.status = ProfileChangeRequest.Status.APPROVED
-    request.reviewed_by = user
-    request.reviewed_at = timezone.now()
-    request.review_note = note or None
-    request.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_note"])
-    log_action(user, "APPROVE_PROFILE_CHANGE", horse, {"ProfileChangeRequestID": request.id, "Changes": payload})
-    return request
-
-
-def reject_change_request(request, user, note):
-    if request.status != ProfileChangeRequest.Status.PENDING:
-        raise BusinessRuleError("Yêu cầu này đã được xử lý.", "INVALID_STATUS")
-    if not note:
-        raise BusinessRuleError("Cần ghi lý do từ chối (ReviewNote).", "REVIEW_NOTE_REQUIRED")
-    request.status = ProfileChangeRequest.Status.REJECTED
-    request.reviewed_by = user
-    request.reviewed_at = timezone.now()
-    request.review_note = note
-    request.save(update_fields=["status", "reviewed_by", "reviewed_at", "review_note"])
-    log_action(user, "REJECT_PROFILE_CHANGE", request.horse, {"ProfileChangeRequestID": request.id})
-    return request
-
-
-# ---------------------------------------------------------------------------
-# Chuồng
-# ---------------------------------------------------------------------------
 def save_stall(user, values, stall=None, club_id=None):
     stall = stall or Stall(club_id=club_id)
     number = values.get("stall_number")

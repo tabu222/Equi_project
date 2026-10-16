@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit",
+    "test:api": "node --test tests/api.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

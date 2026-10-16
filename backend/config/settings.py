@@ -45,9 +45,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.accounts",
     "apps.horses",
-    "apps.training",
     "apps.medical",
-    "apps.care",
 ]
 
 MIDDLEWARE = [
@@ -144,7 +142,9 @@ CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,h
 # File giấy tờ tải lên (hộ chiếu, giấy sở hữu, ảnh ngựa...). Không commit thư mục này lên Git.
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT") or BASE_DIR / "media")
 UPLOAD_MAX_MB = int(os.getenv("UPLOAD_MAX_MB", "10"))
-DATA_UPLOAD_MAX_MEMORY_SIZE = (UPLOAD_MAX_MB + 1) * 1024 * 1024
+CHANGE_REQUEST_MAX_FILES = int(os.getenv("CHANGE_REQUEST_MAX_FILES", "12"))
+DATA_UPLOAD_MAX_NUMBER_FILES = CHANGE_REQUEST_MAX_FILES
+DATA_UPLOAD_MAX_MEMORY_SIZE = (UPLOAD_MAX_MB * CHANGE_REQUEST_MAX_FILES + 1) * 1024 * 1024
 
 # ---------- Email (Gmail SMTP) ----------
 # Gmail: bật xác minh 2 bước, tạo "App password" (16 ký tự) rồi điền 2 dòng EMAIL_HOST_USER / EMAIL_HOST_PASSWORD

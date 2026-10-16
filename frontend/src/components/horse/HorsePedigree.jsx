@@ -1,6 +1,6 @@
 function HorsePedigree({ horse }) {
   return (
-    <section className="profile-section">
+    <section className="profile-section profile-info-card">
       <div className="section-title"><h2>Dòng dõi</h2></div>
       <div className="info-grid">
         <div className="info-item"><span>Tên ngựa cha</span><strong>{horse?.sireName || '—'}</strong></div>

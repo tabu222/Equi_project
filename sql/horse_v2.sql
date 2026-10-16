@@ -335,8 +335,14 @@ CREATE TABLE dbo.HorseDocument
     FileUrl VARCHAR(500),
     UploadedBy INT NULL,
     IsVisibleToOwner BIT NOT NULL CONSTRAINT DF_HorseDocument_Visible DEFAULT 1,
+    IsPrimary BIT NOT NULL CONSTRAINT DF_HorseDocument_Primary DEFAULT 0,
+    IsRetired BIT NOT NULL CONSTRAINT DF_HorseDocument_Retired DEFAULT 0,
+    IsProfileImage BIT NOT NULL CONSTRAINT DF_HorseDocument_ProfileImage DEFAULT 0,
+    ReplacesDocumentID INT NULL,
     UploadedAt DATETIME2 NOT NULL CONSTRAINT DF_HorseDocument_UploadedAt DEFAULT SYSDATETIME(),
 
+    CONSTRAINT FK_HorseDocument_PreviousVersion FOREIGN KEY (ReplacesDocumentID)
+        REFERENCES dbo.HorseDocument(DocumentID),
     CONSTRAINT FK_HorseDocument_Horse FOREIGN KEY (HorseID)
         REFERENCES dbo.Horse(HorseID),
     CONSTRAINT FK_HorseDocument_UploadedBy FOREIGN KEY (UploadedBy)
@@ -402,7 +408,7 @@ CREATE TABLE dbo.ProfileChangeRequest
         REFERENCES dbo.[User](UserID),
     CONSTRAINT CK_ProfileChangeRequest_Status CHECK
     (
-        Status IN ('Pending', 'Approved', 'Rejected')
+        Status IN ('Pending', 'Approved', 'Rejected', 'Withdrawn')
     ),
     CONSTRAINT CK_ProfileChangeRequest_Review CHECK
     (

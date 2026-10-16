@@ -2,12 +2,11 @@
 
 Django REST backend for the Equi project, running at http://127.0.0.1:8000.
 
-- Scope: all **4 flows** over all 37 tables of `horse_v2.sql`, JWT login, permissions from the `Role` / `Permission` tables:
+- Current checkout (`integration/flow1-fe-be`): **Flow 1**, JWT login, public Owner registration, permissions from the `Role` / `Permission` tables:
   - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
-  - **Flow 2 – Training**: horse assessment, trainer assignment, training plans (approved by the Head Trainer), training sessions, Substitute Trainer, results, reviews.
-  - **Flow 3 – Medical**: health reports, medical records (draft / signed / amendment), Training Lock, treatments, vaccinations, medical schedules.
-  - **Flow 4 – Care**: diet plans (approved by the Vet), Groom care tasks, inventory.
-  - Notifications for each role (`GET /api/notifications`).
+  - The missing intake medical record code was recovered selectively from Git commit `b6f1e4b`; existing URLs, permissions and draft ownership rules are retained.
+  - Flow 2 training, Flow 3 beyond intake examinations, and Flow 4 care/inventory are **not installed**. Non-initial examinations return `409 EXAM_TYPE_UNAVAILABLE`; no training/care endpoints are enabled.
+  - Flow 1 notifications (`GET /api/notifications`). Archiving releases stalls; it does not run application cleanup for absent training/care modules.
 - API contract for the frontend: [`docs/API.md`](docs/API.md).
 
 ## Project structure
@@ -17,9 +16,7 @@ config/            Django settings
 apps/core/         shared code (errors, permissions, notifications, tests)
 apps/accounts/     users, roles, login
 apps/horses/       Flow 1 – Horse intake
-apps/training/     Flow 2 – Training
-apps/medical/      Flow 3 – Medical
-apps/care/         Flow 4 – Care
+apps/medical/      intake examinations: draft, sign, amendment (Flow 1 subset)
 ../sql/horse_v2.sql   database script (in the repository root)
 docs/API.md        API contract
 ```
@@ -33,14 +30,14 @@ Do not run `python manage.py migrate` / `makemigrations`.
 
 Requirements: Python 3.12+, SQL Server + SSMS, Microsoft ODBC Driver 17 or 18 for SQL Server.
 
-1. Open `sql/horse_v2.sql` (repository root) in SSMS and run it (F5) to create the database.
+1. Use the existing local/demo SQL Server database matching `sql/horse_v2.sql`. Do not rerun the creation script against existing data.
 2. Open PowerShell in the `backend` folder and run:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
@@ -48,7 +45,7 @@ If PowerShell blocks `Activate.ps1`, run `Set-ExecutionPolicy -Scope CurrentUser
 3. Edit `.env` for your machine (see the comments in the file), then:
 
 ```powershell
-python manage.py seed_demo --password <your-dev-password>
+python manage.py seed_demo
 python manage.py runserver 8000
 ```
 
@@ -61,7 +58,9 @@ After that every API can be called from the page. Postman also works: import <ht
 
 Do not write passwords in source code or the README, and never commit `.env`.
 
-Demo accounts created by `seed_demo` (all with the password you entered):
+`seed_demo` accepts `EQUI_DEMO_PASSWORD` from the environment or generates a password at runtime and prints it for newly created accounts. Existing passwords stay unchanged unless `--reset-passwords` is explicitly supplied. It creates 18 role accounts, six stalls, club/contact details and six horses through the Flow 1 services: 3 Approved, 1 PendingExam, 1 Submitted, 1 Draft. Repeating it preserves existing horses and does not duplicate demo rows. Trainer specializations and inventory from the ZIP are intentionally omitted because their apps are absent.
+
+Demo accounts created by `seed_demo` (the displayed password applies to newly created accounts):
 
 | Role | Accounts |
 |---|---|
@@ -94,10 +93,10 @@ error messages and notification titles. Translations live in `apps/core/i18n.py`
 
 ## Running the tests
 
-106 tests, using in-memory SQLite (no SQL Server needed):
+Tests use in-memory SQLite (no SQL Server needed):
 
 ```powershell
-python manage.py test --settings=config.settings_test
+python manage.py test apps.core.tests --settings=config.settings_test
 ```
 
 ## Notes
@@ -106,3 +105,27 @@ python manage.py test --settings=config.settings_test
 - Create users with `seed_demo`, `POST /api/auth/register` or `POST /api/users`, not with SQL `INSERT`
   (passwords must be hashed by Django).
 - Every data change is logged in the `AuditLog` table.
+
+## Profile update requests: existing database upgrade
+
+Before running this version against an existing SQL Server database, apply
+`../sql/migrations/20261016_profile_change_media.sql` using your normal SQL deployment process.
+It adds document primary/retired/photo flags, the previous-version relationship, and the
+`Withdrawn` request status. It preserves all existing rows and files and is safe to reapply.
+This repository uses unmanaged Django models; `manage.py migrate` does not apply this change.
+Do not run the schema recreation script `horse_v2.sql` on an existing database.
+
+The additive upgrade was applied to the local SQL Server database on 2026-10-16 after correcting
+the initial schema mismatch. Existing document/request values were checked before and after;
+the live horse detail, document list, and proposal options APIs returned HTTP 200.
+For another database, check/apply explicitly from `backend/`:
+
+```powershell
+python manage.py upgrade_profile_media
+python manage.py upgrade_profile_media --apply
+```
+
+The command checks SQL Server schema readiness and preserves existing rows; it does not reset tables.
+The full request contract,
+permission rules, changed files, limits, and validation coverage are documented in
+[docs/API.md](docs/API.md#11-profile-update-proposals-2026-10-16).

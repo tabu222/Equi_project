@@ -2,6 +2,27 @@
 
 Documentation for the frontend team. Backend: Django REST, database `sql/horse_v2.sql`.
 
+**Current checkout supports Flow 1 only.** Sections 5–7 and 10 describe the larger system, not available routes in this checkout. Intake records and amendments are restored from existing Git history. Non-initial examinations, Training Lock, vaccinations, training and care/inventory are unavailable; do not show those actions as working features.
+
+### Verified Flow 1 frontend mapping
+
+All paths below use the `/api` prefix, with no trailing slash. Responses use SQL column names; lists currently return arrays (FE also accepts `results` wrappers). Dates use `YYYY-MM-DD`; datetimes use local ISO strings.
+
+| Function | Method/path | Payload → response | Frontend caller |
+|---|---|---|---|
+| Login / session | `POST /auth/login`, `GET /auth/me`, `POST /auth/refresh` | `Email, Password` → `access, refresh, User`; refresh body `refresh` → `access` | `userApi.ts`, `apiClient.ts` |
+| Public signup / clubs | `POST /auth/register`, `GET /clubs` | `FullName, Email, Phone, Address, ClubID, Password` → token pair + Owner `User`; clubs → `ClubID, ClubName` | `registrationApi.js`, `horseApi.ts`, `LoginScreen.jsx` |
+| Users | `GET /users?RoleCode=HORSE_OWNER` | array of `UserID, Roles, Status, ...` | `userApi.ts`, `CreateHorse.jsx`, `App.jsx` |
+| Horse list/detail/create/edit | `GET, POST /horses`, `GET, PATCH /horses/{id}` | `HorseName, Breed, DateOfBirth, Gender, CoatColor, PassportNumber, MicrochipNumber, SireName, DamName`; Owner create adds `ClubID`, Manager create adds `OwnerID` → horse | `horseApi.ts`, Owner/Manager forms |
+| Register / verify / reject | `POST /horses/{id}/submit`, `/verify`, `/reject` | `{}` / `{}` / `{Reason}` → horse | `horseApi.ts`, `App.jsx`, `CompleteIntake.jsx` |
+| Intake / stalls / archive | `POST /horses/{id}/approve`, `GET /stalls?Status=Available`, `POST /horses/{id}/archive` | `HorseCode, StallID?, ManagerNote?` → horse; archive `Reason` → horse | `horseApi.ts`, `CompleteIntake.jsx` |
+| History / documents | `GET /horses/{id}/registration-requests`, `/documents` | requests with `Status, ManagerNote`; visible documents | `horseApi.ts`, `App.jsx` |
+| Vet queue | `GET /vet/pending-initial-exams` | horse/request IDs, `DraftMedicalRecordID, DraftVetID` | `horseApi.ts`, `HorsesNeedingExam.jsx` |
+| Exam create/read/update/sign | `GET, POST /horses/{id}/medical-records`, `PATCH /medical-records/{id}`, `POST /medical-records/{id}/sign` | `ExamType="Initial Exam", ExamDate?, WeightKg?, HeightCm?, Symptoms, Diagnosis, TreatmentPlan, Conclusion, HealthStatus, TrainingEligibility, RestrictionNote, FollowUpDate?` → record; sign `{}` | `horseApi.ts`, `VetExaminationForm.tsx` |
+| Profile corrections | `POST /horses/{id}/profile-change-requests`, `GET /profile-change-requests?HorseID={id}`, `POST /profile-change-requests/{id}/approve` or `/reject` | create `Changes, Reason, EvidenceDocumentID?`; review `ReviewNote` → request with `ChangedFields, Status` | `horseApi.ts`, Owner/Manager correction pages |
+
+Public signup ignores client roles; the backend grants only `HORSE_OWNER`. JWT/session logic lives exclusively in `apiClient.ts`; logout clears the local tokens (there is no logout/revoke endpoint). A refresh is shared by concurrent 401 responses and retried once. A 403 is shown as a permission error. Roles outside Owner/Manager/Vet can be normalized in lists and receive an explicit unsupported workspace screen at login.
+
 | Part | Contents |
 |---|---|
 | [1–3](#1-general-conventions) | General conventions, error codes, horse registration status, roles and permissions |
@@ -912,11 +933,11 @@ becomes: `HealthStatus` is `Healthy`/`Monitor` **and** `TrainingEligibility !== 
 | `/manager/horses/:id/post-exam` | `getHorseById` (view `HealthSummary`), `getStalls('Available')`, `completeHorseIntake` or `rejectHorse` |
 | `/owner/horses` | `getHorses()` (the backend filters to the owner's own horses) |
 | `/owner/horses/:id` | `getHorseById`, `getHorseDocuments` |
-| `/owner/horses/:id/correction-request` | `requestProfileChange`, `addHorseDocument` (evidence) |
+| `/owner/horses/:id/correction-request` | `submitProfileProposal` (multipart), `getChangeRequestOptions`, `withdrawProfileProposal` |
 | `/vet/horses-needing-exam` | `getPendingInitialExams` |
 | `/vet/horses/:id` | `getHorseById`, `getMedicalRecords` |
 | `/vet/horses/:id/examination` | `saveExaminationDraft`, `finalizeExamination` (pass `DraftMedicalRecordID`) |
-| *(new screen for Manager)* | `getProfileChangeRequests({Status: 'Pending'})`, `approveProfileChange`, `rejectProfileChange` |
+| `/manager/profile-change-requests` | `getProfileChangeRequests`, `reviewProfileChangeRequest` |
 
 ## 10. Frontend for Flow 2–4
 
@@ -941,4 +962,106 @@ Suggested screens by role:
 | Groom | Today's tasks, diet plan, report incidents, request inventory | `GET /care-tasks?mine=1&Date=`, `GET /horses/{id}/current-diet`, `POST /horses/{id}/health-reports`, `POST /inventory-requests` |
 | Manager | Inventory, approve requests | `GET /inventory-items`, `POST /inventory-items/{id}/stock`, `POST /inventory-requests/{id}/approve` |
 | All roles | Notification bell | `GET /notifications` |
+
+## 11. Profile update proposals (2026-10-16)
+
+The Owner correction screen and Manager review screen now use the same complete proposal.
+The old JSON creation contract and existing request IDs remain supported. All paths below
+have the `/api` prefix.
+
+| Method / route | Contract / access |
+|---|---|
+| `GET /horses/{id}/profile-change-options` | Owner + `PROFILE_EDIT_REQUEST`: `MaxFileMB`, `MaxFiles`, `DocumentTypes`, `ClearableFields` |
+| `POST /horses/{id}/profile-change-requests` | Owner's approved horse, `PROFILE_EDIT_REQUEST`; JSON for fields/existing media, multipart for new files |
+| `GET /profile-change-requests[?HorseID=…&Status=…]` | Owner's horses or Manager's club, with the corresponding profile permission |
+| `GET /profile-change-requests/{id}` | Same scope as list; immutable proposal with all changes and attachments |
+| `GET /profile-change-requests/{id}/attachments/{index}[?download=1]` | Same request scope; authenticated file response, private/no-store, no public media URLs |
+| `POST /profile-change-requests/{id}/approve` | Club Manager + `PROFILE_EDIT_APPROVE`, optional `ReviewNote` |
+| `POST /profile-change-requests/{id}/reject` | Club Manager + `PROFILE_EDIT_APPROVE`, nonblank `ReviewNote` required |
+| `POST /profile-change-requests/{id}/withdraw` | Original requester who still owns the horse + `PROFILE_EDIT_REQUEST`; pending only |
+
+For multipart creation, send `Payload` containing JSON and files under `file0`, `file1`, etc.:
+
+```json
+{
+  "Changes": {"HorseName": "Thunder II", "CoatColor": "Grey"},
+  "Reason": "Correct the name using the certificate",
+  "EvidenceDocumentIDs": [12],
+  "RemoveImageIDs": [8],
+  "AvatarDocumentID": 10,
+  "Attachments": [
+    {"FileKey": "file0", "Purpose": "replace", "DocumentName": "Corrected certificate",
+     "DocumentType": "Passport", "ReplacesDocumentID": 11, "Note": "Corrected spelling"},
+    {"FileKey": "file1", "Purpose": "add", "DocumentName": "Owner supporting record", "DocumentType": "Other"}
+  ]
+}
+```
+
+`Purpose` is `avatar`, `image`, `evidence`, `add`, or `replace`. Choose one uploaded avatar
+or one `AvatarDocumentID`, never both. Image purposes accept JPG/JPEG/PNG/WebP; documents
+use the existing PDF/image upload validator. Extension and file signature must agree;
+empty/oversized/disallowed files are rejected. Defaults: `UPLOAD_MAX_MB=10`,
+`CHANGE_REQUEST_MAX_FILES=12`. The UI reads these limits from the server. There is no
+pre-upload step: failed request creation removes its staged files, including partial disk writes.
+
+The server reads old values, ownership, club, and media from the database. It normalizes
+values, omits unchanged fields, and rejects a proposal without an actual change (evidence
+alone is not a profile change). Existing `EvidenceDocumentID` is also supported. Owner
+may only reference visible, active documents on the same horse. Replacement is restricted
+to the Owner's own documents, excluding profile photos, contracts, and handover records.
+Only the Owner's own profile photos may be proposed for removal. Removing the current
+avatar requires a replacement. Scanned documents remain documents, distinct from profile photos.
+
+The existing stricter rule remains: **one pending request per horse**. A conflict returns
+HTTP 409 with `code=PENDING_REQUEST_EXISTS` and `RequestID`; the UI links to that request.
+Fields in the current write serializer are all required, so `ClearableFields=[]`; blank and
+null values are invalid rather than interpreted as deletion. There are no model fields for
+origin, identification description, Owner health notes, document issue date, or expiry date.
+Those fields have not been added. Owner can attach supporting health documents without
+changing Vet conclusions or records.
+
+`ChangedFields` now includes `Changes` (all old/new values), `Attachments`, `EvidenceDocuments`,
+`CurrentAvatar`, `AvatarDocument`, and `RemovedImages`. File records include name, size,
+content type, purpose, optional note, and previous-document metadata. Internal disk paths
+and the server snapshot are omitted from API responses. Review responses also expose
+`ReviewedAt`, `ReviewedBy`, `ReviewedByName`, and `ReviewNote`. Status values are `Pending`,
+`Approved`, `Rejected`, `Withdrawn`. Resolved requests cannot be edited or processed again.
+Creating a new proposal from a rejection re-fetches the horse/documents and revalidates;
+the Owner explicitly reselects files for the new request.
+
+Approval locks the horse then the request, checks club/permission/status, compares the full
+profile/ownership/active and historical document snapshot, and revalidates proposed values
+and file availability. A stale snapshot returns HTTP 409 `STALE_PROFILE`. All field updates,
+document versions, photo flags, reviewer information, and audit records commit together or
+roll back together. Legacy requests without a snapshot compare their changed fields' old values.
+Pending/rejected/withdrawn uploads never enter `HorseDocument`. Evidence stays request-only
+even after approval. Replaced/removed records and physical files remain available to authorized
+history viewers. Documents referenced by request history cannot be permanently deleted.
+Owner direct upload to the approved profile now returns `APPROVAL_REQUIRED`; draft/rejected
+registration editing and upload continue through the existing endpoints.
+
+Changed implementation files:
+
+- Backend: `apps/horses/change_requests.py`, `models.py`, `serializers.py`, `services.py`,
+  `views.py`, `documents.py`; `config/settings.py`, `.env.example`.
+- Frontend: `pages/owner/OwnerCorrectionRequest.jsx` and `.css`,
+  `pages/manager/ProfileChangeRequests.jsx`, `api/horseApi.ts`, `App.jsx` (navigation blocking),
+  `components/horse/ProfileProposalDetails.jsx`, `proposalLabels.js`, `HorseAvatar.jsx`, `HorseDocuments.jsx`.
+- Schema: `sql/migrations/20261016_profile_change_media.sql` is the additive, re-runnable
+  existing-database migration. `sql/horse_v2.sql` reflects the same schema for new demo databases.
+  The additive migration was applied to local SQL Server on 2026-10-16 to correct the initial
+  missing-column regression; original document/request values were verified unchanged.
+  No database reset was run. `python manage.py upgrade_profile_media` checks another database;
+  use `--apply` to perform the additive upgrade explicitly.
+- Tests: `apps/core/tests/test_profile_proposals.py`, `browser_fixture.py`,
+  `frontend/tests/api.test.mjs`, `frontend/tests/profile-proposal.browser.mjs`.
+
+Validation uses the actual Django services with temporary SQLite, FE adapter HTTP contract
+tests, and a real Chromium browser against the isolated Django fixture API. The browser
+exercises desktop/mobile, unsaved navigation, failed-network retry retaining fields/files,
+combined proposals, unchanged live profiles while pending, Manager approval and Owner withdrawal.
+Run commands are in the backend/frontend READMEs. Local SQL Server schema deployment and live
+read APIs for horse 8 were subsequently verified after fixing the initial deployment mismatch.
+SQL Server locking under simultaneous requests and production storage deployment still require
+verification in the target environment; SQLite tests cannot verify those database-specific behaviors.
 
