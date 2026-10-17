@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from . import views
+from . import owner_views, views
 
 router = DefaultRouter(trailing_slash=False)
 router.include_root_view = False
@@ -24,6 +24,12 @@ urlpatterns = [
     path("horses/<int:horse_id>/work-rider-preferences", views.WorkRiderPreferenceView.as_view()),
     path("work-rider-preferences/<int:pref_id>/end", views.WorkRiderPreferenceEndView.as_view()),
     path("training-plan-stages/<int:stage_id>", views.TrainingPlanStageView.as_view()),
+    path("training-plan-stages/<int:stage_id>/close", views.TrainingPlanStageCloseView.as_view()),
+    # Chủ ngựa xem kết quả huấn luyện
+    path("owner/horses/<int:horse_id>/training-plans", owner_views.OwnerTrainingPlanListView.as_view()),
+    path("owner/training-plans/<int:plan_id>", owner_views.OwnerTrainingPlanDetailView.as_view()),
+    path("owner/horses/<int:horse_id>/training-sessions", owner_views.OwnerTrainingSessionListView.as_view()),
+    path("owner/training-sessions/<int:session_id>", owner_views.OwnerTrainingSessionDetailView.as_view()),
     path("training-reviews", views.TrainingReviewListView.as_view()),
     path("training-dashboard", views.TrainingDashboardView.as_view()),
     *router.urls,

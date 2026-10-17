@@ -14,6 +14,7 @@ from apps.core.exceptions import BusinessRuleError
 from apps.core.models import AuditLog
 from apps.horses.models import Horse, RegistrationRequest
 
+from . import owner_emails
 from .models import (
     HealthReport, HealthReportNote, MedicalRecord, MedicalRecordAmendment, MedicalSchedule, TrainingLock, Treatment,
     Vaccination,
@@ -307,6 +308,7 @@ def create_lock(horse, user, values):
     log_action(user, "CREATE_TRAINING_LOCK", lock, {
         "HorseID": horse.pk, "LockLevel": lock.lock_level, "CancelledSessionIDs": lock.cancelled_session_ids,
     })
+    owner_emails.lock_created(lock)
     return lock
 
 
@@ -355,6 +357,7 @@ def release_lock(lock, user, note=None):
         lock.details = ((lock.details or "") + f"\n[Mở khóa] {note}").strip()[:2000]
     lock.save(update_fields=["lock_status", "released_by", "released_at", "lock_end_date", "details"])
     log_action(user, "RELEASE_TRAINING_LOCK", lock, {"FollowUpMedicalRecordID": follow_up.id})
+    owner_emails.lock_released(lock)
     return lock
 
 

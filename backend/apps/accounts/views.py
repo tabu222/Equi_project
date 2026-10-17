@@ -173,9 +173,16 @@ class UserListCreateView(APIView):
         # Manager; Head Trainer cần danh sách Trainer / Work Rider / Groom để phân công
         return [HasAnyPermission("RBAC_MANAGE", "HORSE_REGISTER_REVIEW", "TRAINER_ASSIGN", "TRAINING_SESSION_ASSIGN")()]
 
+    # Trainer chỉ có TRAINING_SESSION_ASSIGN: chỉ cần danh sách người để xếp buổi tập (rider, trainer giám sát thay)
+    SESSION_ROLES = ("WORK_RIDER", "TRAINER", "HEAD_TRAINER")
+
     def get(self, request):
         users = User.objects.filter(club_id=request.user.club_id).prefetch_related("roles")
         role_code = request.query_params.get("RoleCode")
+        if not user_has_any(request.user, "RBAC_MANAGE", "HORSE_REGISTER_REVIEW", "TRAINER_ASSIGN"):
+            if role_code and role_code not in self.SESSION_ROLES:
+                raise PermissionDenied("Bạn chỉ xem được danh sách Work Rider / Trainer.")
+            users = users.filter(roles__code__in=self.SESSION_ROLES)
         if role_code:
             users = users.filter(roles__code=role_code)
         return Response(UserSerializer(users.distinct(), many=True).data)

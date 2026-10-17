@@ -91,10 +91,12 @@ PLAN_FIELDS = ["goal", "start_date", "end_date", "overall_intensity", "note"]
 
 
 class TrainingPlanStageSerializer(DBColumnModelSerializer):
+    ClosedByName = serializers.CharField(source="closed_by.full_name", read_only=True, default=None)
+
     class Meta:
         model = TrainingPlanStage
-        fields = ["id", "plan", *STAGE_FIELDS]
-        read_only_fields = ["id", "plan"]
+        fields = ["id", "plan", *STAGE_FIELDS, "closed_at", "closed_by", "ClosedByName", "summary_note"]
+        read_only_fields = ["id", "plan", "closed_at", "closed_by", "ClosedByName", "summary_note"]
         extra_kwargs = {"stage_order": {"required": False}}
 
     def validate_stage_order(self, value):
@@ -150,6 +152,10 @@ class NoteSerializer(serializers.Serializer):
 
 class ReasonOptionalSerializer(serializers.Serializer):
     Reason = serializers.CharField(max_length=1000, required=False, allow_blank=True, allow_null=True)
+
+
+class StageCloseSerializer(serializers.Serializer):
+    SummaryNote = serializers.CharField(max_length=2000, required=False, allow_blank=True, allow_null=True)
 
 
 # ---------------------------------------------------------------------------
