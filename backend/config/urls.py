@@ -9,4 +9,5 @@ urlpatterns = [
     path("api/", include("apps.horses.urls")),
     path("api/", include("apps.medical.urls")),
     path("api/", include("apps.training.urls")),   # Flow 2
+    path("api/", include("apps.care.urls")),       # Flow 4
 ]

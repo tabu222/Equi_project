@@ -2,6 +2,8 @@
 from datetime import date, timedelta
 
 from django.db.models import Count, Q
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -15,14 +17,14 @@ from apps.core.serializers import fmt_datetime
 from apps.horses.models import Horse
 from apps.horses.views import get_visible_horse
 
-from . import profiles, services
+from . import profiles, services, summaries
 from .models import (
     HorseAssessment, HorseWorkRiderPreference, Specialization, TrainerCredential, TrainerHorseAssignment, TrainerProfile,
     TrainerRaceResult, TrainingPlan, TrainingPlanStage, TrainingReview, TrainingSession,
 )
 from .serializers import (
     AssignTrainerSerializer, HorseAssessmentSerializer, NoteSerializer, ReasonOptionalSerializer,
-    SpecializationSerializer, StopSessionSerializer, SubstituteObservationSerializer,
+    SpecializationSerializer, StageCloseSerializer, StopSessionSerializer, SubstituteObservationSerializer,
     TrainerCredentialSerializer, TrainerHorseAssignmentSerializer, TrainerProfileWriteSerializer,
     TrainerRaceResultSerializer, TrainerSpecializationSerializer,
     TrainingPlanCreateSerializer, TrainingPlanSerializer, TrainingPlanStageSerializer, TrainingPlanWriteSerializer,
@@ -51,7 +53,7 @@ class SpecializationListView(APIView):
         return Response(SpecializationSerializer(Specialization.objects.filter(status="Active"), many=True).data)
 
 
-TRAINER_VIEWERS = ("TRAINER_ASSIGN", "TRAINING_SESSION_ASSIGN", "RBAC_MANAGE")
+TRAINER_VIEWERS = ("TRAINER_ASSIGN", "RBAC_MANAGE")   # Head Trainer, Manager (trainer xem hồ sơ của mình)
 TRAINER_EDITORS = ("TRAINER_ASSIGN", "RBAC_MANAGE")
 
 
@@ -101,6 +103,11 @@ class TrainerListView(APIView):
 
     permission_classes = [HasAnyPermission(*TRAINER_VIEWERS)]
 
+    @extend_schema(parameters=[
+        OpenApiParameter("SpecializationID", OpenApiTypes.INT, description="Chỉ lấy trainer có chuyên môn này"),
+        OpenApiParameter("HorseID", OpenApiTypes.INT,
+                         description="Gợi ý trainer cho ngựa này (thêm IsSuggested / RequiredLevel / SuggestionReason)"),
+    ])
     def get(self, request):
         trainers = club_users_with_role(request.user.club_id, "TRAINER")
         p = request.query_params
@@ -209,6 +216,10 @@ class TrainerRaceResultListView(APIView):
             return [HasAnyPermission(*TRAINER_EDITORS)()]
         return super().get_permissions()
 
+    @extend_schema(parameters=[
+        OpenApiParameter("From", OpenApiTypes.DATE, description="Từ ngày đua (YYYY-MM-DD)"),
+        OpenApiParameter("To", OpenApiTypes.DATE, description="Đến ngày đua (YYYY-MM-DD)"),
+    ])
     def get(self, request, user_id):
         can_view_trainer(request.user, user_id)
         items = TrainerRaceResult.objects.filter(trainer=club_trainer(request.user, user_id))
@@ -363,6 +374,13 @@ class TrainerAssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
 # ---------------------------------------------------------------------------
 # Work Rider ưu tiên
 # ---------------------------------------------------------------------------
+def ensure_horse_session_manager(user, horse):
+    """Head Trainer: mọi ngựa; Trainer: ngựa mình đang phụ trách (ngựa chưa có trainer thì chỉ Head Trainer)."""
+    assignment = services.active_assignment(horse)
+    if user.has_perm("TRAINING_PLAN_APPROVE") or (assignment and services.can_manage_sessions(user, assignment)):
+        return
+    raise PermissionDenied("Bạn chỉ quản lý Work Rider / buổi tập của ngựa mình đang phụ trách.")
+
 class WorkRiderPreferenceView(APIView):
     """GET / POST /api/horses/<HorseID>/work-rider-preferences"""
 
@@ -380,6 +398,7 @@ class WorkRiderPreferenceView(APIView):
 
     def post(self, request, horse_id):
         horse = staff_horse(request.user, horse_id)
+        ensure_horse_session_manager(request.user, horse)
         data = WorkRiderPreferenceCreateSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         v = data.validated_data
@@ -397,6 +416,7 @@ class WorkRiderPreferenceEndView(APIView):
         pref = HorseWorkRiderPreference.objects.filter(pk=pref_id, horse__club_id=request.user.club_id).first()
         if pref is None:
             raise NotFound("Không tìm thấy.")
+        ensure_horse_session_manager(request.user, pref.horse)
         return Response(WorkRiderPreferenceSerializer(services.end_work_rider_preference(pref, request.user)).data)
 
 
@@ -521,6 +541,28 @@ class TrainingPlanStageView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class TrainingPlanStageCloseView(APIView):
+    """
+    POST /api/training-plan-stages/<id>/close {"SummaryNote": "..."} - trainer phụ trách (hoặc Head Trainer)
+    chốt giai đoạn: hệ thống gửi tổng kết giai đoạn cho chủ ngựa (chuông + email).
+    Điều kiện: giáo án Active / Completed, giai đoạn đã bắt đầu, không còn buổi Assigned / In Progress.
+    """
+
+    permission_classes = [HasAnyPermission("TRAINING_PLAN_MANAGE", "TRAINING_PLAN_APPROVE")]
+
+    @extend_schema(request=StageCloseSerializer)
+    def post(self, request, stage_id):
+        stage = TrainingPlanStage.objects.filter(
+            pk=stage_id, plan__assignment__horse__club_id=request.user.club_id).select_related(
+            "plan__assignment__horse__owner", "plan__assignment__trainer").first()
+        if stage is None:
+            raise NotFound("Không tìm thấy giai đoạn.")
+        data = StageCloseSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        stage = services.close_stage(stage, request.user, data.validated_data.get("SummaryNote"))
+        return Response(summaries.stage_summary(stage))
+
+
 # ---------------------------------------------------------------------------
 # Buổi tập
 # ---------------------------------------------------------------------------
@@ -590,10 +632,17 @@ class TrainingSessionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
         data.is_valid(raise_exception=True)
         values = dict(data.validated_data)
         stage = self._stage(values.pop("stage"))
+        services.ensure_session_manager(request.user, stage.plan.assignment)
         return self._out(services.create_session(stage, request.user, values), status.HTTP_201_CREATED)
 
-    def partial_update(self, request, pk=None):
+    def _managed_session(self):
+        """Buổi tập mà người đang đăng nhập được sửa / hủy / đánh vắng."""
         session = self.get_object()
+        services.ensure_session_manager(self.request.user, session.assignment)
+        return session
+
+    def partial_update(self, request, pk=None):
+        session = self._managed_session()
         data = TrainingSessionWriteSerializer(data=request.data, partial=True)
         data.is_valid(raise_exception=True)
         values = dict(data.validated_data)
@@ -625,8 +674,10 @@ class TrainingSessionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
     def stop(self, request, pk=None):
         """Trainer đang giám sát (hoặc Head Trainer) dừng buổi tập; có Flow 3 và ReportHealth=true thì báo luôn cho Vet."""
         session = self.get_object()
-        if not (services.is_supervisor(session, request.user) or request.user.has_perm("TRAINING_SESSION_ASSIGN")):
-            raise PermissionDenied("Chỉ trainer đang giám sát buổi tập hoặc Head Trainer mới dừng buổi tập.")
+        if not (services.is_supervisor(session, request.user)
+                or services.can_manage_sessions(request.user, session.assignment)):
+            raise PermissionDenied("Chỉ trainer đang giám sát buổi tập, trainer phụ trách hoặc Head Trainer "
+                                   "mới dừng buổi tập.")
         data = StopSessionSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         v = data.validated_data
@@ -646,15 +697,15 @@ class TrainingSessionViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, v
     def cancel(self, request, pk=None):
         data = ReasonOptionalSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        session = self.get_object()
-        services.stop_session(session, request.user, data.validated_data.get("Reason") or "Head Trainer hủy")
+        session = self._managed_session()
+        services.cancel_session(session, request.user, data.validated_data.get("Reason") or "Hủy buổi tập")
         return self._out(session)
 
     @action(detail=True, methods=["post"])
     def missed(self, request, pk=None):
         data = ReasonOptionalSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        session = self.get_object()
+        session = self._managed_session()
         services.mark_missed(session, request.user, data.validated_data.get("Reason"))
         return self._out(session)
 

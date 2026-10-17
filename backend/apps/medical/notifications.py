@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from apps.core import flows
 
-from .models import HealthReport, MedicalSchedule, Vaccination
+from .models import HealthReport, MedicalSchedule, TrainingLock, Vaccination
 
 
 def _health_reports(user, make_item, horse_filter=None):
@@ -38,4 +38,12 @@ def medical_items(user, make_item):
     if "TRAINING_PLAN_MANAGE" in perms and flows.has_training():  # Trainer: báo cáo về ngựa mình phụ trách
         items += _health_reports(user, make_item, {"horse__trainer_assignments__trainer": user,
                                                    "horse__trainer_assignments__status": "Active"})
+    if "OWNER_VIEW" in perms:  # Chủ ngựa: ngựa mình đang bị khóa tập / vừa được mở khóa (7 ngày)
+        for lock in TrainingLock.objects.filter(horse__owner=user, lock_status="Active").select_related("horse"):
+            items.append(make_item("OWNER_TRAINING_LOCKED", f"Ngựa tạm dừng huấn luyện ({lock.lock_level})",
+                                   "TrainingLock", lock.id, lock.horse, lock.lock_start_date, True, lock.reason))
+        for lock in TrainingLock.objects.filter(horse__owner=user, lock_status="Released",
+                                                released_at__date__gte=today - timedelta(days=7)).select_related("horse"):
+            items.append(make_item("OWNER_TRAINING_UNLOCKED", "Ngựa được tập lại", "TrainingLock", lock.id, lock.horse,
+                                   lock.released_at))
     return items

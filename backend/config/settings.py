@@ -46,7 +46,8 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.horses",
     "apps.medical",    # Flow 1: phiếu khám đầu vào
-    "apps.training",   # Flow 2: huấn luyện
+    "apps.training",   # Flow 2: huấn luyện  (Flow 3 - y tế nằm trong apps.medical)
+    "apps.care",       # Flow 4: chăm sóc, dinh dưỡng, kho
 ]
 
 MIDDLEWARE = [

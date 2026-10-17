@@ -147,7 +147,8 @@ def approve(horse, user, horse_code, stall_id=None, manager_note=None):
 def archive(horse, user, reason):
     """
     Ngựa rời CLB: lưu trữ hồ sơ và trả chuồng; có Flow 2 thì kết thúc phân công trainer
-    (hủy giáo án / buổi tập chưa diễn ra).
+    (hủy giáo án / buổi tập chưa diễn ra); có Flow 4 thì bỏ các việc chăm sóc chưa làm
+    và khẩu phần đang áp dụng chuyển Expired.
     """
     _require_status(horse, (S.APPROVED,), "lưu trữ hồ sơ")
     now = timezone.now()
@@ -163,6 +164,14 @@ def archive(horse, user, reason):
         trainer_assignment = active_assignment(horse)
         if trainer_assignment is not None:
             end_assignment(trainer_assignment, user, "Ngựa rời CLB")
+    if flows.has_care():
+        from apps.care.models import CareTask, DietPlan
+
+        for task in CareTask.objects.filter(horse=horse, status=CareTask.Status.PENDING):
+            task.status = CareTask.Status.SKIPPED
+            task.note = ((task.note or "") + "\n[Bỏ qua] Ngựa đã rời CLB").strip()[:1000]
+            task.save(update_fields=["status", "note"])
+        DietPlan.objects.filter(horse=horse, status__in=("Pending", "Approved", "Adjusted")).update(status="Expired")
     horse.registration_status = S.ARCHIVED
     horse.archived_at = now
     horse.archived_by = user

@@ -7,6 +7,7 @@ Database không có bảng thông báo, nên danh sách này được TÍNH từ
 Flow 1: hồ sơ chờ xác minh/tiếp nhận, khám đầu vào, phiếu nháp và yêu cầu sửa lý lịch.
 Flow 2 (khi có apps/training): giáo án chờ duyệt / bị trả về, buổi tập hôm nay, buổi tập chờ đánh giá.
 Flow 3: báo cáo sức khỏe chưa xử lý, tiêm phòng / lịch y tế sắp tới.
+Flow 4: khẩu phần chờ duyệt / bị trả về, việc chăm sóc tới hạn, yêu cầu vật tư, vật tư sắp hết.
 """
 from datetime import date, timedelta
 
@@ -82,6 +83,9 @@ def build_notifications(user):
     if flows.has_flow3():  # Flow 3: báo cáo sức khỏe, tiêm phòng, lịch y tế
         from apps.medical.notifications import medical_items
         items += medical_items(user, _item)
+    if flows.has_care():  # Flow 4: khẩu phần, việc chăm sóc, kho vật tư
+        from apps.care.notifications import care_items
+        items += care_items(user, _item)
 
     # Khẩn trước, mới trước; bỏ trùng (một người có nhiều vai trò)
     unique = {(i["Type"], i["EntityID"]): i for i in items}

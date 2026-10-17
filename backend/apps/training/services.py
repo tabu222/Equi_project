@@ -8,8 +8,11 @@ Giáo án:   Draft ──submit──> Pending Approval ──approve──> Act
            Điều chỉnh giáo án đang Active: tạo bản mới (revise) -> duyệt -> bản cũ tự chuyển Completed.
 
 Buổi tập:  Assigned ──start (Work Rider)──> In Progress ──result (Work Rider)──> Completed
-           Assigned / In Progress ──stop (trainer đang giám sát) / cancel (Head Trainer)──> Cancelled
-           Assigned / In Progress ──missed (Head Trainer)──> Missed
+           Assigned / In Progress ──stop (trainer đang giám sát) / cancel──> Cancelled
+           Assigned / In Progress ──missed──> Missed
+           Xếp / sửa / hủy / đánh vắng: Head Trainer cho mọi ngựa, Trainer cho ngựa mình đang phụ trách.
+
+Giai đoạn: trainer phụ trách (hoặc Head Trainer) "chốt" giai đoạn kèm nhận xét -> tổng kết gửi chủ ngựa.
 
 Training Lock (Flow 3) chặn buổi tập giống trigger SQL Server:
   Full -> không xếp / bắt đầu buổi tập; Restricted -> TrainingLoad phải có và <= MaxIntensity.
@@ -18,7 +21,7 @@ from datetime import date
 
 from django.db.models import Max
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from apps.core import flows
 from apps.core.audit import log_action
@@ -26,6 +29,7 @@ from apps.core.exceptions import TRIGGER_MESSAGES, BusinessRuleError
 from apps.core.permissions import require_club_user
 from apps.horses.models import Horse
 
+from . import owner_emails
 from .models import (
     HorseAssessment, HorseWorkRiderPreference, TrainerCredential, TrainerHorseAssignment, TrainerProfile,
     TrainerRaceResult, TrainerSpecialization, TrainingPlan, TrainingPlanStage, TrainingResult, TrainingReview,
@@ -83,6 +87,19 @@ def check_plan_lock(plan):
     plan_end = plan.end_date or date.max
     if plan.start_date <= lock_end and plan_end >= lock.lock_start_date.date():
         raise BusinessRuleError(TRIGGER_MESSAGES["51001"], "TRAINING_LOCK_FULL")
+
+
+def can_manage_sessions(user, assignment) -> bool:
+    """Head Trainer (người duyệt giáo án) xếp buổi tập cho mọi ngựa; Trainer chỉ cho ngựa mình đang phụ trách."""
+    if user.has_perm("TRAINING_PLAN_APPROVE"):
+        return True
+    return (user.has_perm("TRAINING_SESSION_ASSIGN") and assignment.trainer_id == user.pk
+            and assignment.status == TrainerHorseAssignment.Status.ACTIVE)
+
+
+def ensure_session_manager(user, assignment):
+    if not can_manage_sessions(user, assignment):
+        raise PermissionDenied("Bạn chỉ xếp / sửa buổi tập của ngựa mình đang phụ trách.")
 
 
 def cancel_sessions(queryset, user, reason):
@@ -371,6 +388,7 @@ def approve_plan(plan, user, note=None):
     plan.review_note = note or plan.review_note
     plan.save(update_fields=["status", "approved_by", "approved_at", "review_note"])
     log_action(user, "APPROVE_TRAINING_PLAN", plan, {"ReplacedPlanIDs": replaced})
+    owner_emails.plan_approved(plan)
     return plan
 
 
@@ -392,7 +410,11 @@ def complete_plan(plan, user):
                                 f"Kết thúc giáo án #{plan.id}")
     plan.status = P.COMPLETED
     plan.save(update_fields=["status"])
+    # Giai đoạn đã bắt đầu mà chưa chốt thì chốt luôn cùng giáo án (không gửi tổng kết riêng từng giai đoạn)
+    plan.stages.filter(closed_at__isnull=True, start_date__lte=date.today()).update(
+        closed_at=timezone.now(), closed_by=user)
     log_action(user, "COMPLETE_TRAINING_PLAN", plan, {"CancelledSessionIDs": cancelled})
+    owner_emails.plan_completed(plan)
     return plan
 
 
@@ -580,12 +602,23 @@ def is_supervisor(session, user) -> bool:
 
 
 def stop_session(session, user, reason):
-    """Trainer đang giám sát (hoặc Head Trainer) dừng buổi tập khi ngựa có vấn đề -> Cancelled."""
+    """Trainer đang giám sát (hoặc Head Trainer) dừng buổi tập khi ngựa có vấn đề -> Cancelled, báo ngay chủ ngựa."""
+    _end_session(session, user, "STOP_TRAINING_SESSION", reason)
+    owner_emails.session_stopped(session, reason)
+    return session
+
+
+def cancel_session(session, user, reason):
+    """Hủy buổi tập (đổi lịch, thời tiết...) -> Cancelled. Không phải sự cố nên không báo khẩn cho chủ ngựa."""
+    return _end_session(session, user, "CANCEL_TRAINING_SESSION", reason)
+
+
+def _end_session(session, user, action, reason):
     if session.status not in (S.ASSIGNED, S.IN_PROGRESS):
         raise BusinessRuleError("Buổi tập đã kết thúc.", "INVALID_STATUS")
     session.status = S.CANCELLED
     session.save(update_fields=["status"])
-    log_action(user, "STOP_TRAINING_SESSION", session, {"Reason": reason})
+    log_action(user, action, session, {"Reason": reason})
     return session
 
 
@@ -615,3 +648,31 @@ def review_session(session, user, values):
     log_action(user, "REVIEW_TRAINING_SESSION", session,
                {"TrainingReviewID": review.id, "AdjustmentRequired": review.adjustment_required})
     return review
+
+
+# ---------------------------------------------------------------------------
+# Chốt giai đoạn -> tổng kết gửi chủ ngựa
+# ---------------------------------------------------------------------------
+def close_stage(stage, user, summary_note=None):
+    plan = stage.plan
+    if not (user.has_perm("TRAINING_PLAN_APPROVE") or (
+            plan.assignment.trainer_id == user.pk and plan.assignment.status == TrainerHorseAssignment.Status.ACTIVE)):
+        raise PermissionDenied("Chỉ trainer đang phụ trách ngựa hoặc Head Trainer mới chốt giai đoạn.")
+    if plan.status not in (P.ACTIVE, P.COMPLETED):
+        raise BusinessRuleError("Chỉ chốt giai đoạn của giáo án đang Active hoặc đã Completed.", "INVALID_STATUS")
+    if stage.closed_at is not None:
+        raise BusinessRuleError("Giai đoạn này đã được chốt.", "ALREADY_CLOSED")
+    if stage.start_date > date.today():
+        raise BusinessRuleError("Giai đoạn chưa bắt đầu nên chưa chốt được.", "NOT_STARTED")
+    pending = stage.sessions.filter(status__in=(S.ASSIGNED, S.IN_PROGRESS)).count()
+    if pending:
+        raise BusinessRuleError(
+            f"Giai đoạn còn {pending} buổi tập chưa xong (Assigned / In Progress): hãy hoàn thành, hủy "
+            "hoặc đánh vắng trước khi chốt.", "SESSIONS_PENDING")
+    stage.closed_at = timezone.now()
+    stage.closed_by = user
+    stage.summary_note = (summary_note or "").strip() or None
+    stage.save(update_fields=["closed_at", "closed_by", "summary_note"])
+    log_action(user, "CLOSE_PLAN_STAGE", stage, {"TrainingPlanID": plan.id})
+    owner_emails.stage_closed(stage)
+    return stage

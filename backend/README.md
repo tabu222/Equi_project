@@ -2,13 +2,13 @@
 
 Django REST backend for the Equi project, running at http://127.0.0.1:8000.
 
-- Current checkout: **Flow 1 + Flow 2 + Flow 3**, JWT login, public Owner registration, permissions from the `Role` / `Permission` tables:
+- Current checkout: **all 4 flows**, JWT login, public Owner registration, permissions from the `Role` / `Permission` tables:
   - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
   - The missing intake medical record code was recovered selectively from Git commit `b6f1e4b`; existing URLs, permissions and draft ownership rules are retained.
   - **Flow 2 – Training** (`apps/training`): horse assessment, **trainer profile** (years of experience, level Junior / Intermediate / Senior / Expert, seniority proven by degrees / certificates / awards, win rate of the last 12 months from race results, rating), trainer suggestions by specialization and level, trainer assignment, training plans (approved by the Head Trainer), training sessions, Substitute Trainer, results, reviews.
   - **Flow 3 – Medical** (`apps/medical`, next to the intake records): routine / injury / follow-up exams for accepted horses, health reports (Groom / Work Rider / Trainer → on-duty Vet), Training Lock (blocks Flow 2 plans and sessions, cancels affected sessions), treatments with withdrawal period, vaccinations, medical schedules.
-  - Flow 4 care/inventory is **not installed**: no care endpoints are enabled.
-  - Notifications (`GET /api/notifications`) for Flow 1, 2 and 3. Archiving releases stalls and ends the trainer assignment (cancels unfinished plans / sessions).
+  - **Flow 4 – Care** (`apps/care`): diet plans (Head Trainer drafts, Vet approves), Groom care tasks, inventory and inventory requests (Manager approves, low-stock warnings).
+  - Notifications (`GET /api/notifications`) for all 4 flows. Archiving releases stalls, ends the trainer assignment (cancels unfinished plans / sessions), skips pending care tasks and expires diet plans.
 - API contract for the frontend: [`docs/API.md`](docs/API.md).
 
 ## Project structure
@@ -20,6 +20,7 @@ apps/accounts/     users, roles, login
 apps/horses/       Flow 1 – Horse intake
 apps/medical/      Flow 1 intake examinations (draft, sign, amendment) + Flow 3 medical (tests: apps/medical/tests)
 apps/training/     Flow 2 – Training (trainer profile: apps/training/profiles.py; tests: apps/training/tests)
+apps/care/         Flow 4 – Care: diet plans, care tasks, inventory (tests: apps/care/tests)
 ../sql/horse_v2.sql   database script (in the repository root)
 docs/API.md        API contract
 ```
