@@ -2,7 +2,7 @@
 
 Documentation for the frontend team. Backend: Django REST, database `sql/horse_v2.sql`.
 
-**Current checkout supports Flow 1 and Flow 2.** Sections 6–7 and the Flow 3–4 parts of 10 describe the larger system, not available routes in this checkout. Non-initial examinations, Training Lock, health reports, vaccinations and care/inventory are unavailable; do not show those actions as working features. In Flow 2, `ReportHealth` when stopping a session and the Training Lock fields of `/training-dashboard` appear only once Flow 3 is installed.
+**Current checkout supports Flow 1, Flow 2 and Flow 3.** Section 7 and the Flow 4 parts of 10 describe the larger system, not available routes in this checkout: diet plans, care tasks and inventory are unavailable; do not show those actions as working features.
 
 ### Verified Flow 1 frontend mapping
 

@@ -6,6 +6,7 @@ from django.conf import settings
 from django.apps import apps
 from django.test import SimpleTestCase
 
+from apps.core import flows
 from apps.accounts.rbac import PERMISSIONS, ROLE_PERMISSIONS, ROLES
 from apps.horses.models import Horse
 
@@ -104,7 +105,8 @@ class MedicalRecordTests(Flow1TestCase):
         self.assertIn("WeightKg", res.data)
         self.assertIn("HealthStatus", res.data)
 
-    def test_non_initial_exams_are_unavailable_in_flow1_checkout(self):
+    def test_exams_after_intake(self):
+        """Chỉ có Flow 1: chỉ khám đầu vào. Có Flow 3: ngựa đã tiếp nhận được khám định kỳ / chấn thương."""
         horse_id = self.pending_horse()
         vet = self.client_for(self.vet)
         res = vet.post(f"/api/horses/{horse_id}/medical-records", {"ExamType": "Routine Exam"}, format="json")
@@ -115,9 +117,16 @@ class MedicalRecordTests(Flow1TestCase):
             "ExamType": "Injury Exam", "HealthStatus": "Injured", "TrainingEligibility": "Not Eligible",
             "InjuryLocation": "Chân trước trái",
         }, format="json")
-        self.assertEqual(res.status_code, 409, res.data)
-        self.assertEqual(res.data["code"], "EXAM_TYPE_UNAVAILABLE")
-        self.assertEqual(Horse.objects.get(pk=approved_id).current_health_status, "Healthy")
+        if not flows.has_flow3():
+            self.assertEqual(res.status_code, 409, res.data)
+            self.assertEqual(res.data["code"], "EXAM_TYPE_UNAVAILABLE")
+            self.assertEqual(Horse.objects.get(pk=approved_id).current_health_status, "Healthy")
+            return
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNone(res.data["RegistrationRequestID"])
+        body = vet.post(f"/api/medical-records/{res.data['MedicalRecordID']}/sign").data
+        self.assertEqual(Horse.objects.get(pk=approved_id).current_health_status, "Injured")
+        self.assertEqual(body["TrainingLock"]["LockLevel"], "Full")       # Not Eligible -> tự khóa tập
 
     def approved_horse_with_new_chip(self):
         horse_id = self.owner_creates_horse(MicrochipNumber="985000000000777", HorseName="Breeze")

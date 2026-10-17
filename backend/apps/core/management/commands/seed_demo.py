@@ -5,6 +5,7 @@ Tạo dữ liệu demo để chạy thử frontend:  python manage.py seed_demo 
 - Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng và 18 tài khoản (email @equi.local,
   họ tên người thật, có số điện thoại và địa chỉ): 1 Manager, 2 Head Trainer, 3 Trainer, 3 Work Rider, 3 Vet,
   3 Groom, 3 chủ ngựa. Có Flow 2: thêm chuyên môn và hồ sơ năng lực (kinh nghiệm, cấp độ...) cho 3 trainer.
+  Có Flow 3: thêm lịch tiêm phòng, lịch đóng móng và 1 báo cáo sức khỏe đang chờ Vet.
 - Tạo 6 ngựa mẫu của chủ ngựa mẫu, đi qua đúng luồng Flow 1 nên đủ các trạng thái để thử giao diện:
   3 ngựa Approved (có mã ngựa, chuồng, phiếu khám đầu vào), 1 PendingExam, 1 Submitted, 1 Draft.
 - Tài khoản mẫu cũ đang thiếu CLB / số điện thoại / địa chỉ được điền bổ sung; tên cũ "Demo ..." đổi sang tên mới.
@@ -157,6 +158,9 @@ class Command(BaseCommand):
         if flows.has_training():  # Flow 2: chuyên môn + hồ sơ năng lực của 3 trainer mẫu
             from apps.training.seed import seed_demo as seed_training
             seed_training(club)
+        if flows.has_flow3():  # Flow 3: lịch tiêm phòng, lịch y tế, 1 báo cáo sức khỏe đang mở
+            from apps.medical.seed import seed_demo as seed_medical
+            seed_medical(club)
 
         self.stdout.write(self.style.SUCCESS(f"CLB mẫu: {club.club_name} (ClubID={club.id})"))
         for role_code, email, state in rows:
