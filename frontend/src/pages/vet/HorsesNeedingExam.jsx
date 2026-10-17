@@ -1,14 +1,15 @@
+import { vetDateTime } from './vetDomain.js'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import EmptyState from '../../components/common/EmptyState.jsx'
 import StatusBadge from '../../components/common/StatusBadge.jsx'
 import HorseAvatar from '../../components/horse/HorseAvatar.jsx'
-import { formatHorseCode, formatHorseDateTime, valueOrMissing } from '../../components/horse/horseDisplay.js'
+import { formatHorseCode, valueOrMissing } from '../../components/horse/horseDisplay.js'
 import { formatHorseGender } from '../../components/horse/horseLabels.js'
 
 const pageSize = 10
 
-function HorsesNeedingExam({ initialExams = [], horses = [], loadError, onRetry }) {
+function HorsesNeedingExam({ initialExams = [], horses = [], currentUser, loadError, onRetry }) {
   const [search, setSearch] = useState('')
   const [examStatus, setExamStatus] = useState('All')
   const [page, setPage] = useState(1)
@@ -46,10 +47,11 @@ function HorsesNeedingExam({ initialExams = [], horses = [], loadError, onRetry 
         <div>
           <p className="eyebrow">BÁC SĨ THÚ Y · HỒ SƠ KHÁM</p>
           <h1>Hàng chờ khám đầu vào</h1>
-          <p>Các hồ sơ đang chờ Vet khám trực tiếp theo quy trình tiếp nhận hiện tại.</p>
+          <p>Vet trực tiếp nhận khám, không cần Manager chỉ định. <Link to="/vet/intake-results">Xem kết quả khám đầu vào →</Link></p>
         </div>
         <button className="button button-secondary" type="button" onClick={onRetry}>Làm mới hàng chờ</button>
       </header>
+      <p className="vet-caption">Thời gian chờ hiện tính từ lúc gửi hồ sơ tiếp nhận. Chưa có mốc riêng cho lúc chuyển sang chờ khám.</p>
 
       {loadError && (
         <section className="panel" role="alert">
@@ -110,16 +112,16 @@ function HorsesNeedingExam({ initialExams = [], horses = [], loadError, onRetry 
                       <th scope="col">Nhận diện</th>
                       <th scope="col">Trạng thái hồ sơ</th>
                       <th scope="col">Tiến độ khám</th>
-                      <th scope="col">Ngày đăng ký</th>
+                      <th scope="col">Gửi vào hàng chờ tiếp nhận</th>
                       <th scope="col">Thời gian chờ</th>
                       <th scope="col">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pageExams.map(({ horse, requestDate, waitingHours, draftMedicalRecordId }) => {
+                    {pageExams.map(({ horse, requestDate, waitingHours, draftMedicalRecordId, draftVetId }) => {
                       const code = horse.code || horseById.get(String(horse.id))?.code || ''
                       return (
-                      <tr key={horse.id}>
+                      <tr key={horse.id} className={waitingHours >= 24 ? 'vet-wait-long' : undefined}>
                         <td>
                           <div className="horse-table-identity">
                             <HorseAvatar horseId={horse.id} name={horse.name} size="small" />
@@ -129,12 +131,15 @@ function HorsesNeedingExam({ initialExams = [], horses = [], loadError, onRetry 
                         <td>{valueOrMissing(horse.breed)}<small>{horse.sex === 'UNKNOWN' ? 'Chưa cập nhật giới tính' : formatHorseGender(horse.sex)}</small><small>Microchip: {valueOrMissing(horse.microchipNumber)}</small></td>
                         <td><StatusBadge status={horse.profileStatus} type="registration" /></td>
                         <td><StatusBadge status={draftMedicalRecordId ? 'DRAFT' : 'PENDING'} type="exam" label={draftMedicalRecordId ? `Đang khám · phiếu #${draftMedicalRecordId}` : 'Chưa bắt đầu'} /></td>
-                        <td>{formatHorseDateTime(requestDate)}</td>
-                        <td>{typeof waitingHours === 'number' && Number.isFinite(waitingHours) ? `${waitingHours} giờ` : 'Chưa cập nhật'}</td>
+                        <td>{vetDateTime(requestDate)}</td>
+                        <td>{typeof waitingHours === 'number' && Number.isFinite(waitingHours) ? `${waitingHours} giờ${waitingHours >= 24 ? ' · Chờ lâu' : ''}` : 'Chưa cập nhật'}</td>
                         <td>
-                          <Link className="view-button vet-queue-action" to={`/vet/horses/${horse.id}/examination`}>
-                            {draftMedicalRecordId ? 'Tiếp tục khám' : 'Bắt đầu khám'}
-                          </Link>
+                          {!currentUser?.permissions.includes('MEDICAL_MANAGE') ? <span>Không có quyền nhận khám</span>
+                            : draftMedicalRecordId && draftVetId !== currentUser.id
+                              ? <><span>Vet khác đang xử lý</span><Link className="view-button" to={`/vet/horses/${horse.id}`}>Xem hồ sơ</Link></>
+                              : <Link className="view-button vet-queue-action" to={`/vet/horses/${horse.id}/examination`}>
+                                {draftMedicalRecordId ? 'Tiếp tục phiếu nháp' : 'Bắt đầu khám'}
+                              </Link>}
                         </td>
                       </tr>
                       )

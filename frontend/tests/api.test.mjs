@@ -9,16 +9,19 @@ import { transformWithOxc } from 'vite'
 
 // Exercise the actual FE adapters with controlled HTTP responses. No business data is mocked in the app.
 const temp = await mkdtemp(join(tmpdir(), 'equi-api-tests-'))
-for (const name of ['apiClient.ts', 'userApi.ts', 'horseApi.ts', 'registrationApi.js']) {
+for (const name of ['apiClient.ts', 'userApi.ts', 'horseApi.ts', 'vetApi.ts', 'registrationApi.js']) {
   const source = await readFile(new URL(`../src/api/${name}`, import.meta.url), 'utf8')
   const compiled = (await transformWithOxc(source, name, { lang: name.endsWith('.ts') ? 'ts' : 'js' }))
-    .code.replaceAll('import.meta.env', '({})').replaceAll('./apiClient.ts', './apiClient.mjs')
+    .code.replaceAll('import.meta.env', '({})').replaceAll('./apiClient.ts', './apiClient.mjs').replaceAll('./horseApi.ts', './horseApi.mjs')
   await writeFile(join(temp, name.replace(/\.(ts|js)$/, '.mjs')), compiled)
 }
 const client = await import(pathToFileURL(join(temp, 'apiClient.mjs')))
 const users = await import(pathToFileURL(join(temp, 'userApi.mjs')))
 const horses = await import(pathToFileURL(join(temp, 'horseApi.mjs')))
 const registration = await import(pathToFileURL(join(temp, 'registrationApi.mjs')))
+const vet = await import(pathToFileURL(join(temp, 'vetApi.mjs')))
+await writeFile(join(temp, 'vetDomain.mjs'), await readFile(new URL('../src/pages/vet/vetDomain.js', import.meta.url), 'utf8'))
+const domain = await import(pathToFileURL(join(temp, 'vetDomain.mjs')))
 const store = new Map()
 const events = []
 const originalFetch = globalThis.fetch
@@ -33,6 +36,99 @@ const rawUser = { UserID: 1, ClubID: 2, Email: 'owner@example.test', Roles: ['HO
 const rawHorse = { HorseID: 3, HorseName: 'Thunder', RegistrationStatus: 'Draft' }
 beforeEach(() => { store.clear(); events.length = 0 })
 after(async () => { globalThis.fetch = originalFetch; await rm(temp, { recursive: true, force: true }) })
+
+test('Vet herd counts require every page and reject incomplete or foreign-club data', async () => {
+  client.saveSession('access', 'refresh')
+  const calls = []
+  globalThis.fetch = async url => {
+    calls.push(url)
+    return json(url.includes('page=2')
+      ? { count: 2, next: null, results: [{ ...rawHorse, HorseID: 4, ClubID: 2 }] }
+      : { count: 2, next: 'https://equi.example.test/api/horses?page=2', results: [{ ...rawHorse, ClubID: 2 }] })
+  }
+  assert.equal((await vet.getVetHerd('2')).length, 2)
+  assert.deepEqual(calls, ['/api/horses', '/api/horses?page=2'])
+  globalThis.fetch = async () => json({ count: 2, next: null, results: [{ ...rawHorse, ClubID: 2 }] })
+  await assert.rejects(vet.getVetHerd('2'), /đầy đủ/)
+  globalThis.fetch = async () => json([{ ...rawHorse, ClubID: 3 }])
+  await assert.rejects(vet.getVetHerd('2'), /phạm vi/)
+  globalThis.fetch = async () => json([{ ...rawHorse, ClubID: 2 }, { ...rawHorse, ClubID: 2 }])
+  await assert.rejects(vet.getVetHerd('2'), /phạm vi/)
+})
+
+test('Vet pagination refuses off-origin, off-resource and looping next links before sending JWT', async () => {
+  client.saveSession('access', 'refresh')
+  for (const next of ['https://untrusted.test/api/horses?page=2', '/api/users?page=2', '/api/horses']) {
+    let calls = 0
+    globalThis.fetch = async () => { calls++; return json({ count: 2, next, results: [{ ...rawHorse, ClubID: 2 }] }) }
+    await assert.rejects(vet.getVetHerd('2'))
+    assert.equal(calls, 1)
+  }
+})
+
+test('Vet record reload preserves decimals, injury, note and current request, without inventing a horse code', async () => {
+  client.saveSession('access', 'refresh')
+  globalThis.fetch = async () => json([{ HorseID: 3, HorseName: 'Thunder', RegistrationRequestID: 9, RequestDate: '2026-10-17T08:01:30', DraftVetID: 7 }])
+  const queue = await horses.getPendingInitialExams()
+  assert.equal(queue[0].horse.profileStatus, 'PENDING_EXAM')
+  assert.equal(queue[0].horse.code, '')
+  assert.equal(queue[0].requestId, '9')
+  const record = { MedicalRecordID: 5, HorseID: 3, VetID: 7, RegistrationRequestID: 9, RecordStatus: 'Draft', ExamDate: '2026-10-17T08:01:30', WeightKg: '480.5', HeightCm: '162.0', InjuryLocation: 'Vị trí được ghi nhận', Note: 'Kết quả kiểm tra' }
+  globalThis.fetch = async () => json([record])
+  const [draft] = await horses.getMedicalRecords('3')
+  assert.equal(draft.weightKg, 480.5)
+  assert.equal(draft.heightCm, 162)
+  assert.equal(draft.injuryLocation, record.InjuryLocation)
+  assert.equal(draft.note, record.Note)
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, '/api/medical-records/5')
+    assert.equal(init.method, 'PATCH')
+    const body = JSON.parse(init.body)
+    assert.equal(body.ExamDate, '2026-10-17T08:01:30')
+    assert.equal(body.Note, record.Note)
+    assert.equal(body.InjuryLocation, record.InjuryLocation)
+    assert.equal(body.RegistrationRequestID, undefined)
+    return json(record)
+  }
+  await horses.saveExaminationDraft('3', draft, '5')
+  globalThis.fetch = async () => json([{ ...record, RecordStatus: 'UnknownFutureStatus' }])
+  await assert.rejects(horses.getMedicalRecords('3'), /trạng thái/)
+})
+
+test('Vet amendments append through the existing scoped API and do not patch a signed record', async () => {
+  client.saveSession('access', 'refresh')
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, '/api/medical-records/5/amendments')
+    assert.equal(init.method, 'POST')
+    assert.deepEqual(JSON.parse(init.body), { Reason: 'Reason', AmendedContent: 'Correction' })
+    return json({ MedicalRecordAmendmentID: 8, Reason: 'Reason', AmendedContent: 'Correction', AmendedByName: 'Vet 2', AmendedAt: '2026-10-17T08:30:10' }, 201)
+  }
+  const result = await vet.addMedicalAmendment('5', ' Reason ', ' Correction ')
+  assert.equal(result.author, 'Vet 2')
+  assert.equal(result.id, '8')
+})
+
+test('Vet history partial failures remain explicit and drafts never override signed training conclusions', async () => {
+  client.saveSession('access', 'refresh')
+  globalThis.fetch = async url => url.includes('/4/') ? json({ detail: 'Unavailable' }, 503) : json([
+    { MedicalRecordID: 1, HorseID: 3, VetID: 7, RecordStatus: 'Signed', ExamDate: '2026-10-16T09:00:00', TrainingEligibility: 'Restricted' },
+    { MedicalRecordID: 2, HorseID: 3, VetID: 7, RecordStatus: 'Draft', ExamDate: '2026-10-17T09:00:00', TrainingEligibility: 'Eligible' },
+  ])
+  const result = await vet.getVetHistories([{ id: '3' }, { id: '4' }])
+  assert.deepEqual(result.failedHorseIds, ['4'])
+  assert.equal(domain.latestSigned(result.records, '3').trainingEligibility, 'Restricted')
+  assert.equal(domain.latestSigned(result.records, '4'), undefined)
+})
+
+test('Vet date helpers use club midnight and preserve seconds independently from browser timezone', () => {
+  assert.equal(domain.clubToday(new Date('2026-10-16T17:00:00Z')), '2026-10-17')
+  assert.equal(domain.clubToday(new Date('2026-10-16T16:59:59Z')), '2026-10-16')
+  assert.equal(domain.clubDateTimeInput('2026-10-17T08:31:45'), '2026-10-17T08:31:45')
+  assert.equal(domain.clubDateTimeInput('2026-10-17T01:31:45Z'), '2026-10-17T08:31:45')
+  assert.equal(domain.dueGroup('2026-10-16', '2026-10-17'), 'overdue')
+  assert.equal(domain.dueGroup('2026-10-17', '2026-10-17'), 'today')
+  assert.equal(domain.dueGroup('2026-10-18', '2026-10-17'), 'upcoming')
+})
 
 test('multi-field proposals send files and purpose metadata together without modifying the live document API', async () => {
   client.saveSession('access', 'refresh')
