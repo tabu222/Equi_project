@@ -727,9 +727,15 @@ CREATE TABLE dbo.TrainingPlanStage
     DistanceTargetKm DECIMAL(10,2) NULL,
     Surface VARCHAR(50),
     Note NVARCHAR(1500),
+    -- Trainer chốt giai đoạn: tổng kết gửi chủ ngựa
+    ClosedAt DATETIME2 NULL,
+    ClosedByID INT NULL,
+    SummaryNote NVARCHAR(2000) NULL,
 
     CONSTRAINT FK_TrainingPlanStage_Plan FOREIGN KEY (TrainingPlanID)
         REFERENCES dbo.TrainingPlan(TrainingPlanID),
+    CONSTRAINT FK_TrainingPlanStage_ClosedBy FOREIGN KEY (ClosedByID)
+        REFERENCES dbo.[User](UserID),
     CONSTRAINT UQ_TrainingPlanStage_Order UNIQUE (TrainingPlanID, StageOrder),
     CONSTRAINT CK_TrainingPlanStage_Order CHECK (StageOrder > 0),
     CONSTRAINT CK_TrainingPlanStage_Dates CHECK
@@ -1813,7 +1819,7 @@ VALUES
 ('TRAINER_ASSIGN',             N'Phân công Trainer',          N'Head Trainer giao ngựa cho Trainer phụ trách theo chuyên môn.'),
 ('TRAINING_PLAN_MANAGE',       N'Quản lý giáo án',            N'Trainer phụ trách tạo, điều chỉnh và gửi duyệt giáo án.'),
 ('TRAINING_PLAN_APPROVE',      N'Duyệt giáo án',              N'Head Trainer duyệt hoặc trả về giáo án trước khi áp dụng.'),
-('TRAINING_SESSION_ASSIGN',    N'Xếp buổi tập',               N'Head Trainer xếp buổi tập, giao Work Rider, chỉ định Substitute Trainer.'),
+('TRAINING_SESSION_ASSIGN',    N'Xếp buổi tập',               N'Xếp buổi tập, giao Work Rider, chỉ định Substitute Trainer: Head Trainer cho mọi ngựa, Trainer cho ngựa mình đang phụ trách.'),
 ('TRAINING_SESSION_SUPERVISE', N'Giám sát buổi tập',          N'Có mặt giám sát, dừng buổi tập khi ngựa có vấn đề, ghi nhận xét khi giám sát thay.'),
 ('TRAINING_RESULT_UPDATE',     N'Cập nhật kết quả tập',       N'Work Rider bắt đầu buổi tập và ghi kết quả thực tế.'),
 ('TRAINING_REVIEW',            N'Đánh giá buổi tập',          N'Trainer phụ trách đánh giá kết quả và đề xuất điều chỉnh giáo án.'),
@@ -1855,6 +1861,7 @@ FROM
     -- Trainer (phụ trách hoặc Substitute)
     ('TRAINER', 'HORSE_VIEW'),
     ('TRAINER', 'TRAINING_PLAN_MANAGE'),
+    ('TRAINER', 'TRAINING_SESSION_ASSIGN'),
     ('TRAINER', 'TRAINING_SESSION_SUPERVISE'),
     ('TRAINER', 'TRAINING_REVIEW'),
     ('TRAINER', 'HEALTH_REPORT'),

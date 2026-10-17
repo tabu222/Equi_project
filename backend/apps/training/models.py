@@ -270,6 +270,11 @@ class TrainingPlanStage(models.Model):
                                              db_column="DistanceTargetKm")
     surface = models.CharField(max_length=50, null=True, blank=True, db_column="Surface")
     note = models.CharField(max_length=1500, null=True, blank=True, db_column="Note")
+    # Trainer chốt giai đoạn -> gửi tổng kết cho chủ ngựa (xem apps/training/summaries.py)
+    closed_at = models.DateTimeField(null=True, blank=True, db_column="ClosedAt")
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.DO_NOTHING, null=True, blank=True,
+                                  db_column="ClosedByID", related_name="+")
+    summary_note = models.CharField(max_length=2000, null=True, blank=True, db_column="SummaryNote")
 
     class Meta:
         managed = False

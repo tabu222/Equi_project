@@ -235,7 +235,7 @@ class SessionTests(TrainingTestCase):
             "TrainingPlanStageID": stage_id, "WorkRiderID": self.groom.id, "SessionDate": TODAY.isoformat(),
             "StartTime": "09:00", "TrainingType": "Walk"}, format="json")
         self.assertIn("WorkRiderID", res.data)
-        self.assertEqual(self.client_for(self.trainer).post("/api/training-sessions", {}, format="json")
+        self.assertEqual(self.client_for(self.rider).post("/api/training-sessions", {}, format="json")
                          .status_code, 403)
 
 
