@@ -4,8 +4,8 @@ GET /api/notifications - danh sách "việc cần chú ý" của người đang 
 Database không có bảng thông báo, nên danh sách này được TÍNH từ dữ liệu hiện tại mỗi lần gọi
 (không có trạng thái đã đọc). Frontend gọi khi mở trang / định kỳ để hiện chuông thông báo.
 
-Phạm vi bản backend này: hồ sơ chờ xác minh/tiếp nhận, khám đầu vào, phiếu nháp
-và yêu cầu sửa lý lịch. Các nhánh Flow 2–4 chưa được cài.
+Flow 1: hồ sơ chờ xác minh/tiếp nhận, khám đầu vào, phiếu nháp và yêu cầu sửa lý lịch.
+Flow 2 (khi có apps/training): giáo án chờ duyệt / bị trả về, buổi tập hôm nay, buổi tập chờ đánh giá.
 """
 from datetime import date, timedelta
 
@@ -13,6 +13,7 @@ from django.db.models import Exists, OuterRef
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from . import flows
 from .i18n import is_english, translate_text
 from .serializers import fmt_datetime
 
@@ -73,6 +74,10 @@ def build_notifications(user):
                                                        reviewed_at__date__gte=today - timedelta(days=7)):
             items.append(_item("PROFILE_CHANGE_DONE", f"Yêu cầu sửa lý lịch: {req.status}", "ProfileChangeRequest",
                                req.id, req.horse, req.reviewed_at, message=req.review_note))
+
+    if flows.has_training():  # Flow 2: giáo án, buổi tập
+        from apps.training.notifications import training_items
+        items += training_items(user, _item)
 
     # Khẩn trước, mới trước; bỏ trùng (một người có nhiều vai trò)
     unique = {(i["Type"], i["EntityID"]): i for i in items}

@@ -2,11 +2,12 @@
 
 Django REST backend for the Equi project, running at http://127.0.0.1:8000.
 
-- Current checkout (`integration/flow1-fe-be`): **Flow 1**, JWT login, public Owner registration, permissions from the `Role` / `Permission` tables:
+- Current checkout: **Flow 1 + Flow 2**, JWT login, public Owner registration, permissions from the `Role` / `Permission` tables:
   - **Flow 1 – Horse intake**: registration, verification, intake examination, approval, stalls, profile changes, archiving.
   - The missing intake medical record code was recovered selectively from Git commit `b6f1e4b`; existing URLs, permissions and draft ownership rules are retained.
-  - Flow 2 training, Flow 3 beyond intake examinations, and Flow 4 care/inventory are **not installed**. Non-initial examinations return `409 EXAM_TYPE_UNAVAILABLE`; no training/care endpoints are enabled.
-  - Flow 1 notifications (`GET /api/notifications`). Archiving releases stalls; it does not run application cleanup for absent training/care modules.
+  - **Flow 2 – Training** (`apps/training`): horse assessment, **trainer profile** (years of experience, level Junior / Intermediate / Senior / Expert, seniority proven by degrees / certificates / awards, win rate of the last 12 months from race results, rating), trainer suggestions by specialization and level, trainer assignment, training plans (approved by the Head Trainer), training sessions, Substitute Trainer, results, reviews.
+  - Flow 3 beyond intake examinations and Flow 4 care/inventory are **not installed**. Non-initial examinations return `409 EXAM_TYPE_UNAVAILABLE`; no care endpoints are enabled. Training Lock checks switch on by themselves when Flow 3 adds the `TrainingLock` model (`apps/core/flows.py`).
+  - Notifications (`GET /api/notifications`) for Flow 1 and Flow 2. Archiving releases stalls and ends the trainer assignment (cancels unfinished plans / sessions).
 - API contract for the frontend: [`docs/API.md`](docs/API.md).
 
 ## Project structure
@@ -17,6 +18,7 @@ apps/core/         shared code (errors, permissions, notifications, tests)
 apps/accounts/     users, roles, login
 apps/horses/       Flow 1 – Horse intake
 apps/medical/      intake examinations: draft, sign, amendment (Flow 1 subset)
+apps/training/     Flow 2 – Training (trainer profile: apps/training/profiles.py; tests: apps/training/tests)
 ../sql/horse_v2.sql   database script (in the repository root)
 docs/API.md        API contract
 ```
@@ -105,6 +107,13 @@ python manage.py test apps.core.tests --settings=config.settings_test
 - Create users with `seed_demo`, `POST /api/auth/register` or `POST /api/users`, not with SQL `INSERT`
   (passwords must be hashed by Django).
 - Every data change is logged in the `AuditLog` table.
+
+## Trainer profile (Flow 2): existing database upgrade
+
+On a database created before 2026-10-17, run `../sql/migrations/20261017_trainer_profile.sql` once in SSMS
+(it only adds the `TrainerProfile`, `TrainerCredential` and `TrainerRaceResult` tables and is safe to run again),
+then `python manage.py seed_demo` to give the 3 demo trainers their profiles, papers and race results
+(Expert / Senior / Junior). A new database created with `horse_v2.sql` already has the table.
 
 ## Profile update requests: existing database upgrade
 

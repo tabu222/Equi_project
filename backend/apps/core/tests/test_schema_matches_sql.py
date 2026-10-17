@@ -9,6 +9,8 @@ from django.apps import apps
 from django.conf import settings
 from django.test import SimpleTestCase
 
+from apps.core import flows
+
 SQL = Path(settings.SQL_SCRIPT).read_text(encoding="utf-8")
 SQL_TYPES = {"INT", "BIGINT", "BIT", "VARCHAR", "NVARCHAR", "DATE", "DATETIME2", "TIME", "DECIMAL", "AS"}
 
@@ -35,15 +37,19 @@ def business_models():
 class SchemaMatchesSqlTests(SimpleTestCase):
     def test_every_table_has_a_model(self):
         modelled = {m._meta.db_table for m in business_models()}
-        # SQL describes all four flows; this checkout intentionally ships Flow 1 only.
-        outside_flow1 = {
-            "InventoryRequestItem", "HorseWorkRiderPreference", "TrainingResult", "TrainingLock",
-            "DietMeal", "CareTask", "MedicalSchedule", "HealthReport", "DietPlan", "TrainingSession",
-            "InventoryItem", "Specialization", "TrainingReview", "HorseAssessment", "TrainingPlanStage",
-            "TrainerSpecialization", "Treatment", "HealthReportNote", "TrainingPlan", "Vaccination",
-            "TrainerHorseAssignment", "InventoryRequest",
+        # SQL mô tả đủ 4 flow; backend được nộp dần nên chỉ đòi model của các flow đã có.
+        flow_tables = {
+            "Flow 2": (flows.has_training, {
+                "Specialization", "TrainerSpecialization", "TrainerProfile", "TrainerCredential", "TrainerRaceResult",
+                "HorseAssessment", "TrainerHorseAssignment", "HorseWorkRiderPreference", "TrainingPlan",
+                "TrainingPlanStage", "TrainingSession", "TrainingResult", "TrainingReview"}),
+            "Flow 3": (flows.has_flow3, {
+                "TrainingLock", "Treatment", "Vaccination", "MedicalSchedule", "HealthReport", "HealthReportNote"}),
+            "Flow 4": (flows.has_care, {
+                "DietPlan", "DietMeal", "CareTask", "InventoryItem", "InventoryRequest", "InventoryRequestItem"}),
         }
-        self.assertEqual(set(sql_tables()) - modelled, outside_flow1, "Thiếu model trong phạm vi Flow 1")
+        not_delivered = set().union(*(tables for installed, tables in flow_tables.values() if not installed()))
+        self.assertEqual(set(sql_tables()) - modelled, not_delivered, "Thiếu model của flow đã có")
 
     def test_model_columns_exist_in_sql(self):
         tables = sql_tables()

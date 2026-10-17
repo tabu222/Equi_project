@@ -9,7 +9,7 @@ import json
 
 from django.utils import timezone
 
-from apps.core import emails
+from apps.core import emails, flows
 from apps.core.audit import log_action
 from apps.core.exceptions import BusinessRuleError
 from apps.medical.services import signed_initial_exam_for
@@ -146,8 +146,8 @@ def approve(horse, user, horse_code, stall_id=None, manager_note=None):
 
 def archive(horse, user, reason):
     """
-    Ngựa rời CLB trong bản Flow 1: lưu trữ hồ sơ và trả chuồng.
-    Flow 2/4 không được cài trong bản backend này.
+    Ngựa rời CLB: lưu trữ hồ sơ và trả chuồng; có Flow 2 thì kết thúc phân công trainer
+    (hủy giáo án / buổi tập chưa diễn ra).
     """
     _require_status(horse, (S.APPROVED,), "lưu trữ hồ sơ")
     now = timezone.now()
@@ -157,6 +157,12 @@ def archive(horse, user, reason):
         assignment.save(update_fields=["status", "end_date"])
         assignment.stall.status = Stall.Status.AVAILABLE
         assignment.stall.save(update_fields=["status"])
+    if flows.has_training():
+        from apps.training.services import active_assignment, end_assignment
+
+        trainer_assignment = active_assignment(horse)
+        if trainer_assignment is not None:
+            end_assignment(trainer_assignment, user, "Ngựa rời CLB")
     horse.registration_status = S.ARCHIVED
     horse.archived_at = now
     horse.archived_by = user

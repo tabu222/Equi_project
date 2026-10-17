@@ -2,7 +2,7 @@
 
 Documentation for the frontend team. Backend: Django REST, database `sql/horse_v2.sql`.
 
-**Current checkout supports Flow 1 only.** Sections 5–7 and 10 describe the larger system, not available routes in this checkout. Intake records and amendments are restored from existing Git history. Non-initial examinations, Training Lock, vaccinations, training and care/inventory are unavailable; do not show those actions as working features.
+**Current checkout supports Flow 1 and Flow 2.** Sections 6–7 and the Flow 3–4 parts of 10 describe the larger system, not available routes in this checkout. Non-initial examinations, Training Lock, health reports, vaccinations and care/inventory are unavailable; do not show those actions as working features. In Flow 2, `ReportHealth` when stopping a session and the Training Lock fields of `/training-dashboard` appear only once Flow 3 is installed.
 
 ### Verified Flow 1 frontend mapping
 
@@ -373,21 +373,64 @@ Head Trainer assesses the horse ──> assigns 1 responsible Trainer ──> Tr
 
 Only `Approved` horses can enter training. All Flow 2 APIs require the `HORSE_VIEW` permission to view (club staff).
 
-### 5.1 Specializations, Trainers
+### 5.1 Specializations, Trainers, trainer profile
 
 | Method | URL | Used by | Notes |
 |---|---|---|---|
 | GET | `/specializations` | everyone | `Flat Racing`, `Steeplechase / Hurdle Racing`, `Harness Racing`, `Endurance / Long-distance Racing`, `Other` |
-| GET | `/trainers?SpecializationID=` | Head Trainer, Manager | trainers in the club, their specializations, number of horses currently assigned |
+| GET | `/trainers?SpecializationID=` | Head Trainer, Manager | trainers in the club: specializations, **profile** (see table below) and number of horses currently assigned |
+| GET | `/trainers?HorseID=` | Head Trainer, Manager | **trainer suggestions for a horse** (see below): suitable trainers first |
+| GET | `/trainers/{UserID}` | Head Trainer, Manager, the trainer themself | same fields + `ActiveHorses`, `Credentials`, `RecentRaceResults` (last 10) |
+| PATCH | `/trainers/{UserID}/profile` | Head Trainer, Manager | `{"CareerStartDate"?, "TrainerRating"?}` |
+| GET / POST | `/trainers/{UserID}/credentials` | view: as above · add: Head Trainer, Manager | degrees, certificates, licences, awards |
+| DELETE | `/trainer-credentials/{CredentialID}` | Head Trainer, Manager | |
+| GET / POST | `/trainers/{UserID}/race-results?From=&To=` | view: as above · add: Head Trainer, Manager | each time a horse prepared by the trainer ran a race |
+| DELETE | `/trainer-race-results/{RaceResultID}` | Head Trainer, Manager | remove a wrong entry |
 | POST | `/trainers/{UserID}/specializations` | Head Trainer, Manager | `{"SpecializationID": 1}` – assign a specialization to a trainer |
 | DELETE | `/trainers/{UserID}/specializations/{SpecializationID}` | Head Trainer, Manager | cannot be deleted if already used in a trainer assignment (`IN_USE`) |
 
 ```json
-[{"UserID": 4, "FullName": "Demo Trainer", "Email": "trainer@equi.local", "Phone": null,
-  "Specializations": [{"SpecializationID": 1, "SpecializationName": "Flat Racing"}], "ActiveHorseCount": 2}]
+[{"UserID": 4, "FullName": "Phạm Quốc Bảo", "Email": "trainer@equi.local", "Phone": "0938452116",
+  "Specializations": [{"SpecializationID": 1, "SpecializationName": "Flat Racing"}],
+  "CareerStartDate": "2013-06-01", "YearsOfExperience": 13, "ExperienceLevel": "Expert", "ExperienceLevelName": "Chuyên gia",
+  "Seniority": 12, "SenioritySince": "2014-03-10", "QualificationCount": 2, "AwardCount": 2,
+  "CareerStarts": 240, "CareerWins": 58, "CareerWinRate": 24.2, "RecentStarts": 40, "RecentWins": 9,
+  "WinRate": 22.5, "PlaceRate": 45.0, "WinRateNote": null, "TrainerRating": 4.6, "ActiveHorseCount": 2, "HasProfile": true}]
 ```
 
+Every number is **computed** from what is recorded, nothing is typed in by hand:
+
+| Field | How it is computed |
+|---|---|
+| `YearsOfExperience` | full years since `CareerStartDate` (the day the trainer started the profession) – grows by itself every year |
+| `ExperienceLevel` | from `YearsOfExperience`: 0–2 `Junior`, 3–5 `Intermediate`, 6–10 `Senior`, more than 10 `Expert` (`ExperienceLevelName` = Vietnamese name) |
+| `Seniority` | **proven** professional seniority: full years since the earliest `Degree` / `Certificate` / `License` (`SenioritySince`); `null` if none recorded. `QualificationCount`, `AwardCount` = number of those papers / awards |
+| `WinRate` | like the "strike rate" used in racing: wins / starts in the **last 12 months** (`RecentWins` / `RecentStarts`), %. `null` with `WinRateNote` when there are fewer than **10** starts in 12 months (too few to be meaningful) |
+| `PlaceRate` | finishes in the top 3 / starts in the last 12 months (same 10-start rule) |
+| `CareerStarts`, `CareerWins`, `CareerWinRate` | the whole career (all race results) |
+| `TrainerRating` | 0–5 (1 decimal) given by the Head Trainer / Manager, `null` = not rated |
+| `HasProfile` | `false` = profile not entered yet |
+
+Example on screen: *Phạm Quốc Bảo – Flat Racing – Kinh nghiệm: 13 năm – Cấp độ: Expert – Đang phụ trách: 2 ngựa*.
+
+Credential body: `{"CredentialType": "Degree" | "Certificate" | "License" | "Award", "Title", "IssuedBy"?, "IssuedDate",
+"ExpiryDate"?, "FileUrl"? (link to the scanned paper), "Note"?}`. An award does not count towards `Seniority`.
+
+Race result body: `{"RaceDate", "RaceName", "RaceClass"? ("Group 1", "Group 2", "Group 3", "Listed", "Handicap",
+"Maiden", "Other"), "HorseID"? (horse of the club) or "HorseName" (horse from outside), "FinishPosition", "FieldSize", "Note"?}`;
+`FinishPosition` must be between 1 and `FieldSize` (at least 2 horses), the date cannot be in the future.
+
+**Trainer suggestions** `GET /trainers?HorseID=5` use the horse's latest `Recommended` assessment (5.2):
+
+- the trainer must have the recommended specialization;
+- minimum level by `QualityScore` (a better horse aiming at bigger races needs a more experienced trainer):
+  `≥ 85` → `Senior` or higher, `≥ 70` → `Intermediate` or higher, lower / not scored → any level;
+- each row gets `IsSuggested`, `MatchesSpecialization`, `MatchesLevel`, `RequiredLevel` and `SuggestionReason`
+  (Vietnamese sentence to show); order: suggested first, then higher level, fewer active horses, higher rating.
+
 The trainer must have a specialization (`TrainerSpecialization`) matching the specialization of the assignment (a foreign key constraint in SQL).
+The level is only a suggestion: `POST /trainer-assignments` still accepts a lower-level trainer but returns
+`LevelWarning` (see 5.3).
 
 ### 5.2 Horse assessment
 
@@ -416,6 +459,9 @@ Each horse has only **1** `Active` responsible trainer (`ALREADY_ASSIGNED` if on
  "SpecializationID": 1, "SpecializationName": "Flat Racing", "AssignedByHeadTrainerID": 2, "AssignedByName": "Demo Head Trainer",
  "AssessmentID": 1, "StartDate": "2026-10-10", "EndDate": null, "Status": "Active", "AssignmentNote": null}
 ```
+
+`POST /trainer-assignments` also returns `TrainerExperienceLevel`, `RequiredLevel` and `LevelWarning`
+(`null`, or a sentence when the horse should go to a more experienced trainer – the assignment is still created).
 
 ### 5.4 Preferred work riders (familiar with the horse)
 

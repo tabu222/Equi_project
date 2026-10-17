@@ -4,7 +4,7 @@ Tạo dữ liệu demo để chạy thử frontend:  python manage.py seed_demo 
 - Bổ sung Role / Permission / RolePermission nếu thiếu (horse_v2.sql thường đã có sẵn).
 - Tạo 1 CLB mẫu (đủ địa chỉ, điện thoại, email), 6 chuồng và 18 tài khoản (email @equi.local,
   họ tên người thật, có số điện thoại và địa chỉ): 1 Manager, 2 Head Trainer, 3 Trainer, 3 Work Rider, 3 Vet,
-  3 Groom, 3 chủ ngựa. Flow 2–4 chưa cài: không tạo chuyên môn trainer hay vật tư kho.
+  3 Groom, 3 chủ ngựa. Có Flow 2: thêm chuyên môn và hồ sơ năng lực (kinh nghiệm, cấp độ...) cho 3 trainer.
 - Tạo 6 ngựa mẫu của chủ ngựa mẫu, đi qua đúng luồng Flow 1 nên đủ các trạng thái để thử giao diện:
   3 ngựa Approved (có mã ngựa, chuồng, phiếu khám đầu vào), 1 PendingExam, 1 Submitted, 1 Draft.
 - Tài khoản mẫu cũ đang thiếu CLB / số điện thoại / địa chỉ được điền bổ sung; tên cũ "Demo ..." đổi sang tên mới.
@@ -23,6 +23,7 @@ from django.db import transaction
 
 from apps.accounts.models import Club, Role, User, UserRole
 from apps.accounts.rbac import ensure_rbac_seed
+from apps.core import flows
 from apps.horses import services as horse_services
 from apps.horses.models import Horse, Stall
 from apps.medical import services as medical_services
@@ -116,7 +117,6 @@ class Command(BaseCommand):
         password = options.get("password") or os.getenv("EQUI_DEMO_PASSWORD") or secrets.token_urlsafe(12)
         reset = options["reset_passwords"]
 
-        self.stdout.write("Phạm vi Flow 1: bỏ qua chuyên môn trainer và kho vật tư (chưa có Flow 2/4).")
         ensure_rbac_seed()
         club = self.ensure_club()
         for number, stall_type in DEMO_STALLS:
@@ -154,6 +154,9 @@ class Command(BaseCommand):
             rows.append((role_code, email, state))
 
         horses = self.ensure_horses(club)
+        if flows.has_training():  # Flow 2: chuyên môn + hồ sơ năng lực của 3 trainer mẫu
+            from apps.training.seed import seed_demo as seed_training
+            seed_training(club)
 
         self.stdout.write(self.style.SUCCESS(f"CLB mẫu: {club.club_name} (ClubID={club.id})"))
         for role_code, email, state in rows:

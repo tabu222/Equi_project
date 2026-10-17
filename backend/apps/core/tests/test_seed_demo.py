@@ -15,7 +15,8 @@ from apps.medical.models import MedicalRecord
 
 
 def seed(*args):
-    call_command("seed_demo", "--password", secrets.token_urlsafe(18), *args, stdout=StringIO())
+    # "--password=..." (một đối số): mật khẩu ngẫu nhiên có thể bắt đầu bằng "-" làm argparse hiểu nhầm là tùy chọn
+    call_command("seed_demo", f"--password={secrets.token_urlsafe(18)}", *args, stdout=StringIO())
 
 
 class SeedDemoTests(TestCase):
