@@ -2,6 +2,8 @@
 from datetime import date, timedelta
 
 from django.db.models import Count, Q
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -101,6 +103,11 @@ class TrainerListView(APIView):
 
     permission_classes = [HasAnyPermission(*TRAINER_VIEWERS)]
 
+    @extend_schema(parameters=[
+        OpenApiParameter("SpecializationID", OpenApiTypes.INT, description="Chỉ lấy trainer có chuyên môn này"),
+        OpenApiParameter("HorseID", OpenApiTypes.INT,
+                         description="Gợi ý trainer cho ngựa này (thêm IsSuggested / RequiredLevel / SuggestionReason)"),
+    ])
     def get(self, request):
         trainers = club_users_with_role(request.user.club_id, "TRAINER")
         p = request.query_params
@@ -209,6 +216,10 @@ class TrainerRaceResultListView(APIView):
             return [HasAnyPermission(*TRAINER_EDITORS)()]
         return super().get_permissions()
 
+    @extend_schema(parameters=[
+        OpenApiParameter("From", OpenApiTypes.DATE, description="Từ ngày đua (YYYY-MM-DD)"),
+        OpenApiParameter("To", OpenApiTypes.DATE, description="Đến ngày đua (YYYY-MM-DD)"),
+    ])
     def get(self, request, user_id):
         can_view_trainer(request.user, user_id)
         items = TrainerRaceResult.objects.filter(trainer=club_trainer(request.user, user_id))
